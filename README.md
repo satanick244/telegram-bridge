@@ -2,7 +2,7 @@
 
 一个可运行的全栈业务原型，面向钢铁出口的供应商、买家和平台运营人员。界面为中文，商品按美元 / 公吨计价。内置 3 家示例供应商、6 款钢材与 4 笔订单。
 
-**当前属于共享演示空间，尚不能作为真实 SaaS 对外运营。** 已实现数据持久化与交易流程，但没有登录认证、企业数据隔离、真实收付款或外部物流连接。请勿存入敏感资料，也不要直接暴露到公网。
+**当前属于共享演示空间，尚不能作为真实 SaaS 对外运营。** 已实现数据持久化与交易流程，但没有登录认证、企业数据隔离、真实收付款或外部物流连接。公开演示只使用示例资料，请勿录入真实敏感业务信息。
 
 ## 本地运行
 
@@ -62,7 +62,7 @@ npm run test:e2e
 
 接口测试使用内存数据库，覆盖成本计算、入驻审核、商品验证、报价、订单价格防篡改、库存不足和并发下单。浏览器测试自动启动独立的 3001 端口服务和内存数据库，不污染开发数据库。
 
-浏览器测试默认复用 `/usr/bin/chromium`；也可设置 `CHROMIUM_PATH`。其他环境先运行 `npx playwright install chromium`。字体和 SVG 插图在本地提供，页面不依赖第三方图片或字体请求。
+浏览器测试默认复用 `/usr/bin/chromium`；也可设置 `CHROMIUM_PATH`。其他环境先运行 `npx playwright install chromium`。字体、图标和摄影素材在本地提供，页面不依赖第三方图片或字体请求。
 
 ## 代码结构
 
@@ -76,10 +76,16 @@ npm run test:e2e
 
 ## 部署
 
-已提供 Dockerfile、Compose 数据卷配置和[部署说明](docs/DEPLOYMENT.md)。公网访问必须有实际发布入口；仅启动云端 3000 端口不会自动生成公网网址。
+在线演示：https://steelflow-demo.onrender.com
+
+已提供 Dockerfile、Compose 数据卷配置和[部署说明](docs/DEPLOYMENT.md)。免费 Render 实例的临时数据库可能在重启或重新部署后重置。
 
 Render 一键部署入口（部署控制台入口，不是已上线的网站）：
 
 https://render.com/deploy?repo=https://github.com/satanick244/telegram-bridge
 
 登录自己的 Render 账号后查看配置并应用。服务完成部署后，Render 才会分配实际访问域名。
+
+## 工业风视觉与真实摄影
+
+页面采用海军蓝、冷灰与青绿色的工业视觉体系。商品卡片、详情、表格和采购表单使用本地真实摄影素材；照片仅为品类示意，不代表实际供应商或具体牌号。作者与许可可在网页页脚「照片来源与许可」或 [PHOTO-CREDITS.md](docs/PHOTO-CREDITS.md) 查看。使用 `npm run check:media` 核验本地素材与来源记录。

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('all workspace pages render without browser errors', async ({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  for (const [route,title] of [['overview','业务总览'],['market','好钢材，不止于国界。'],['products','我的商品'],['inquiries','询价与报价'],['orders','订单管理'],['profit','每一吨利润，都心中有数。'],['logistics','跨越山海，交付信任。'],['documents','贸易单证，一处协作。'],['suppliers','与好供应商，一起走向全球。'],['onboarding','你的好钢材，值得被世界看见。'],['settings','企业设置']]) {
+  for (const [route,title] of [['overview','业务总览'],['market','全球钢材采购'],['products','我的商品'],['inquiries','询价与报价'],['orders','订单管理'],['profit','利润与收益'],['logistics','出口物流'],['documents','贸易单证'],['suppliers','供应商网络'],['onboarding','供应商入驻'],['settings','企业设置']]) {
     await page.goto('/#'+route); await expect(page.locator('h1')).toHaveText(title);
   }
   expect(errors).toEqual([]);
@@ -101,7 +101,7 @@ test('mobile routes fit viewport and navigation works',async({page})=>{
   }
   await page.getByRole('button',{name:'打开导航'}).click();
   await page.locator('nav').getByRole('link',{name:'全球采购市场'}).click();
-  await expect(page.locator('h1')).toHaveText('好钢材，不止于国界。');
+  await expect(page.locator('h1')).toHaveText('全球钢材采购');
   await expect(page.locator('.sidebar')).not.toHaveClass(/open/);
   await page.screenshot({path:'test-results/mobile-market.png',fullPage:true,animations:'disabled'});
 });
@@ -117,7 +117,34 @@ test('keyboard global search opens and finds a product',async({page})=>{
 test('supplier directory filters marketplace to the selected supplier',async({page})=>{
   await page.goto('/#suppliers');
   await page.locator('.supplier-card').filter({hasText:'华东钢铁集团'}).getByRole('button',{name:'发现产品'}).click();
-  await expect(page.locator('h1')).toHaveText('好钢材，不止于国界。');
+  await expect(page.locator('h1')).toHaveText('全球钢材采购');
   await expect(page.getByLabel('筛选供应商')).toHaveValue('s1');
   await expect(page.locator('.product-card')).toHaveCount(2);
+});
+
+test('real category photographs load locally and source licenses are accessible',async({page})=>{
+  const external=[];
+  page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:3001'))external.push(r.url());});
+  await page.goto('/#market');
+  await expect(page.locator('h1')).toHaveText('全球钢材采购');
+  const count=await page.locator('.product-card').count();expect(count).toBeGreaterThanOrEqual(6);
+  const photos=page.locator('.product-card .product-photo');
+  await expect(photos).toHaveCount(count);
+  const urls=new Set();
+  for(const photo of await photos.all()){
+    await photo.scrollIntoViewIfNeeded();
+    await expect.poll(()=>photo.evaluate(img=>img.complete&&img.naturalWidth>100)).toBe(true);
+    expect(await photo.getAttribute('src')).toMatch(/^\/images\/[a-z]+\.jpg$/);
+    urls.add(await photo.getAttribute('src'));
+  }
+  expect(urls.size).toBe(6);
+  await expect(page.locator('.photo-unavailable')).toHaveCount(0);
+  await page.getByRole('button',{name:'照片来源与许可',exact:true}).click();
+  await expect(page.getByRole('dialog').locator('.media-credits article')).toHaveCount(7);
+  await expect(page.getByRole('dialog').getByRole('link',{name:'原始作品'})).toHaveCount(7);
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  await page.goto('/#overview');
+  const hero=page.locator('.port-visual img');await expect(hero).toBeVisible();
+  await expect.poll(()=>hero.evaluate(img=>img.complete&&img.naturalWidth>100)).toBe(true);
+  expect(external).toEqual([]);
 });

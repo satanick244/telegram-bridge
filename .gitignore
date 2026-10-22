@@ -1,7 +1,9 @@
 node_modules/
 dist/
-data/
+/data/
 playwright-report/
 test-results/
 .env
 *.log
+__pycache__/
+*.py[cod]

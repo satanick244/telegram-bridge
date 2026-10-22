@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: steelflow-demo
+    runtime: node
+    plan: free
+    autoDeployTrigger: off
+    buildCommand: npm ci --no-audit --no-fund && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: /tmp/steelflow.db

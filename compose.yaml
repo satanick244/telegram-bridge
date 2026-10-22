@@ -1,0 +1,11 @@
+services:
+  steelflow:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - steelflow-data:/app/data
+    restart: unless-stopped
+    init: true
+volumes:
+  steelflow-data:

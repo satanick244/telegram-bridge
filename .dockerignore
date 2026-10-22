@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+data
+test-results
+playwright-report
+.npm-cache
+.env
+.env.*
+*.log
+*.zip

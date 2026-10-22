@@ -77,3 +77,9 @@ npm run test:e2e
 ## 部署
 
 已提供 Dockerfile、Compose 数据卷配置和[部署说明](docs/DEPLOYMENT.md)。公网访问必须有实际发布入口；仅启动云端 3000 端口不会自动生成公网网址。
+
+Render 一键部署入口（部署控制台入口，不是已上线的网站）：
+
+https://render.com/deploy?repo=https://github.com/satanick244/telegram-bridge
+
+登录自己的 Render 账号后查看配置并应用。服务完成部署后，Render 才会分配实际访问域名。

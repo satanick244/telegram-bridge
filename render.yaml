@@ -3,7 +3,7 @@ services:
     name: steelflow-demo
     runtime: node
     plan: free
-    autoDeployTrigger: off
+    autoDeployTrigger: "off"
     buildCommand: npm ci --no-audit --no-fund && npm run build
     startCommand: npm start
     healthCheckPath: /api/health

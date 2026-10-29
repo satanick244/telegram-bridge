@@ -1,3 +1,4 @@
+import { unitOf } from '../shared/catalog.js';
 export const round = n => Math.round((n + Number.EPSILON) * 100) / 100;
 export function calculateProfit({ price, cost, quantity, freight = 0, other = 0, feeRate = 2, exchangeRate = 7.12 }) {
   for (const [key, value] of Object.entries({ price, cost, quantity, freight, other, feeRate, exchangeRate })) {
@@ -14,7 +15,7 @@ export function calculateProfit({ price, cost, quantity, freight = 0, other = 0,
 }
 export const orderStatuses = ['待确认', '合同确认', '生产备货', '待装运', '运输中', '已完成'];
 export function validateOrder(product, quantity) {
-  if (!Number.isSafeInteger(quantity) || quantity < product.moq) throw new Error(`采购量须为整数，且不少于 ${product.moq} 吨`);
+  if (!Number.isSafeInteger(quantity) || quantity < product.moq) throw new Error(`采购量须为整数，且不少于 ${product.moq} ${unitOf(product)}`);
   if (quantity > product.stock) throw new Error('当前可售库存不足');
   return round(product.price * quantity);
 }

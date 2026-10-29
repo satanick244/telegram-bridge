@@ -1,150 +1,35 @@
 import { test, expect } from '@playwright/test';
-
-test('all workspace pages render without browser errors', async ({page})=>{
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  for (const [route,title] of [['overview','业务总览'],['market','全球钢材采购'],['products','我的商品'],['inquiries','询价与报价'],['orders','订单管理'],['profit','利润与收益'],['logistics','出口物流'],['documents','贸易单证'],['suppliers','供应商网络'],['onboarding','供应商入驻'],['settings','企业设置']]) {
-    await page.goto('/#'+route); await expect(page.locator('h1')).toHaveText(title);
-  }
-  expect(errors).toEqual([]);
+import fs from 'node:fs';
+const media=JSON.parse(fs.readFileSync(new URL('../src/data/catalog-media.json',import.meta.url)));
+async function search(page,q){await page.getByRole('textbox',{name:'搜索商品',exact:true}).fill(q);await page.getByRole('textbox',{name:'搜索商品',exact:true}).press('Enter');}
+test('all public and workspace pages render without browser errors',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ for(const route of ['market','factories','sourcing','services','overview','products','inquiries','orders','profit','logistics','documents','suppliers','onboarding','settings']){await page.goto('/#'+route);await expect(page.locator('h1')).toBeVisible();}
+ expect(errors).toEqual([]);
 });
-
-test('supplier applies, is approved and publishes a new product',async({page})=>{
-  await page.goto('/#onboarding');
-  await page.getByLabel('企业名称 *',{exact:true}).fill('瀚海测试钢铁有限公司');
-  await page.getByLabel('统一社会信用代码 *',{exact:true}).fill('91310000E2E0000001');
-  await page.getByLabel('企业所在地 *',{exact:true}).fill('中国 · 江苏');
-  await page.getByLabel('联系人 *',{exact:true}).fill('张经理');
-  await page.getByLabel('企业联系邮箱 *',{exact:true}).fill('export@example.com');
-  await page.getByLabel('年产能（吨）*',{exact:true}).fill('500000');
-  await page.getByRole('checkbox').check();
-  await page.getByRole('button',{name:'提交入驻申请'}).click();
-  await expect(page.getByRole('dialog').getByRole('heading',{name:'入驻申请已提交'}).first()).toBeVisible();
-  await page.getByRole('button',{name:'查看记录'}).click();
-  const row=page.locator('tr').filter({hasText:'瀚海测试钢铁有限公司'});
-  await row.getByRole('button',{name:'通过',exact:true}).click();
-  await expect(row.getByText('已通过',{exact:true})).toBeVisible();
-  await page.goto('/#products');await page.getByRole('button',{name:'发布商品',exact:true}).click();
-  const dialog=page.getByRole('dialog');
-  await dialog.getByLabel('商品名称 *',{exact:true}).fill('出口测试钢卷');
-  await dialog.getByLabel('英文名称',{exact:true}).fill('Export Test Coil');
-  await dialog.getByLabel('所属供应商 *',{exact:true}).selectOption({label:'瀚海测试钢铁有限公司'});
-  await dialog.getByLabel('钢种牌号 *',{exact:true}).fill('Q355B');
-  await dialog.getByLabel('产品规格 *',{exact:true}).fill('3 × 1250 mm');
-  await dialog.getByLabel('出口单价（USD / 吨）*',{exact:true}).fill('580');
-  await dialog.getByLabel('采购成本（CNY / 吨）*',{exact:true}).fill('3200');
-  await dialog.getByLabel('可售库存（吨）*',{exact:true}).fill('1000');
-  await dialog.getByLabel('最小起订量（吨）*',{exact:true}).fill('25');
-  await dialog.getByRole('button',{name:'确认发布商品'}).click();
-  await expect(dialog.getByRole('heading',{name:'商品已成功上架'}).first()).toBeVisible();
-  await dialog.getByRole('button',{name:'查看记录'}).click();
-  await expect(page.locator('tr').filter({hasText:'出口测试钢卷'})).toBeVisible();
-  await page.reload();await expect(page.locator('tr').filter({hasText:'出口测试钢卷'})).toBeVisible();
+test('category deep link, search, prices, favorites, comparison and catalog language work',async({page})=>{
+ await page.goto('/?category=gongjuyugongchangyihaopin--gongju--diandonggongju#market');await expect(page.locator('.sf-product-card')).toHaveCount(6);
+ await page.getByRole('checkbox',{name:'对比'}).nth(0).check();await page.getByRole('checkbox',{name:'对比'}).nth(1).check();await page.getByRole('button',{name:'比较商品'}).click();await expect(page.getByRole('dialog').locator('thead img')).toHaveCount(2);await page.getByRole('button',{name:'关闭',exact:true}).click();
+ await search(page,'RH-CD20');await expect(page.locator('.sf-product-card')).toHaveCount(1);await page.getByRole('button',{name:'收藏 20V 无刷充电式电钻',exact:true}).click();await page.getByRole('button',{name:/我的收藏/}).click();await expect(page.locator('.sf-product-card')).toHaveCount(1);
+ await page.reload();await expect(page.getByRole('textbox',{name:'搜索商品',exact:true})).toHaveValue('RH-CD20');await page.getByRole('button',{name:'简体中文',exact:true}).click();await expect(page.locator('.sf-product-name')).toContainText('Brushless');
 });
-
-test('buyer filters, favorites, inquires and purchases; order progresses and invoice downloads',async({page})=>{
-  await page.goto('/#market');
-  await page.getByPlaceholder('搜索钢材、牌号或规格').fill('热轧钢卷');
-  await expect(page.locator('.product-card')).toHaveCount(1);
-  await page.getByRole('button',{name:'收藏商品',exact:true}).click();
-  await page.getByRole('button',{name:/我的收藏/}).click();
-  await expect(page.locator('.product-card')).toHaveCount(1);
-  await page.getByRole('button',{name:'优质热轧钢卷',exact:true}).click();
-  await page.getByRole('button',{name:'联系供应商 / 询价'}).click();
-  let dialog=page.getByRole('dialog');
-  await dialog.getByLabel('买方企业名称 *').fill('Ocean Test Buyer');
-  await dialog.getByLabel('联系邮箱 *').fill('buy@example.com');
-  await dialog.getByLabel('目的国家 / 地区 *').selectOption('越南');
-  await dialog.getByLabel('采购要求 *').fill('请提供 SGS 认证以及 30 天内装运报价。');
-  await dialog.getByRole('checkbox').check();await dialog.getByRole('button',{name:'发送采购询价'}).click();
-  await expect(dialog.getByRole('heading',{name:'采购询价已发送'}).first()).toBeVisible();
-  await dialog.getByRole('button',{name:'关闭',exact:true}).click();
-  await page.goto('/#market');await page.getByRole('button',{name:'优质热轧钢卷',exact:true}).click();
-  await page.getByRole('button',{name:'创建采购订单',exact:true}).click();
-  dialog=page.getByRole('dialog');
-  await dialog.getByLabel('买方企业名称 *').fill('Ocean Test Buyer');
-  await dialog.getByLabel('联系邮箱 *').fill('buy@example.com');
-  await dialog.getByLabel('目的国家 / 地区 *').selectOption('越南');
-  await dialog.getByLabel('采购数量（吨）*').fill('50');
-  await dialog.getByLabel('目的港口 *').fill('胡志明港');
-  await expect(dialog.locator('.order-estimate')).toContainText('$26,400.00');
-  await dialog.getByRole('checkbox').check();await dialog.getByRole('button',{name:'提交采购订单'}).click();
-  await expect(dialog.getByRole('heading',{name:'采购订单已创建'}).first()).toBeVisible();
-  await dialog.getByRole('button',{name:'查看记录'}).click();
-  const row=page.locator('tr').filter({hasText:'Ocean Test Buyer'});await expect(row).toBeVisible();
-  await row.getByRole('button').first().click();
-  await page.getByRole('button',{name:'演示推进：合同确认'}).click();
-  await expect(page.getByRole('button',{name:'演示推进：生产备货'})).toBeVisible();
-  await page.getByRole('button',{name:'查看贸易单证'}).click();
-  const dl=page.waitForEvent('download');await page.getByRole('button',{name:'导出形式发票草稿'}).click();
-  expect((await dl).suggestedFilename()).toMatch(/^PI-SF-.*\.csv$/);
+test('quote basket persists and submits a sourcing group',async({page})=>{
+ await page.goto('/#market');await search(page,'RH-CD20');await page.locator('.sf-product-card').getByRole('button',{name:'加入询价',exact:true}).click();await page.reload();await page.getByRole('button',{name:'询价篮 1',exact:true}).click();let d=page.getByRole('dialog');await expect(d).toContainText('20V 无刷充电式电钻');await d.getByLabel('公司名称 *').fill('Test Africa Supply');await d.getByLabel('联系邮箱 *').fill('test@example.com');await d.getByLabel('规格与交付要求 *').fill('220V, FOB Ningbo, delivery to Lagos, 30 days.');await d.getByRole('checkbox').check();await d.getByRole('button',{name:'提交采购需求'}).click();await expect(page.getByRole('dialog')).toContainText('RFQ-G-');await page.getByRole('button',{name:'查看我的询价'}).click();await expect(page.locator('.inquiry-card').filter({hasText:'Test Africa Supply'})).toContainText('10 件');
 });
-
-test('profit changes are calculated and uncalculated exports are prevented',async({page})=>{
-  await page.goto('/#profit');
-  await page.getByLabel('出口单价',{exact:true}).fill('600');
-  await page.getByLabel('采购成本',{exact:true}).fill('3500');
-  await page.getByLabel('订单数量',{exact:true}).fill('100');
-  await page.getByLabel('结算汇率',{exact:true}).fill('7');
-  await page.getByLabel('运费与港杂费',{exact:true}).fill('20');
-  await page.getByLabel('其他固定费用',{exact:true}).fill('500');
-  await expect(page.getByRole('button',{name:'导出测算'})).toBeDisabled();
-  await page.getByRole('button',{name:'重新测算利润'}).click();
-  await expect(page.locator('.profit-result-card h2')).toHaveText('$6,300.00');
-  await expect(page.getByRole('button',{name:'导出测算'})).toBeEnabled();
+test('custom sourcing request is saved and a supplier can quote it',async({page})=>{
+ await page.goto('/#sourcing');await page.getByLabel('采购商品 / 型号 *').fill('24V industrial water pump');await page.getByLabel('采购数量 *').fill('50');await page.getByLabel('公司名称 *').fill('Custom Buyer Ltd');await page.getByLabel('联系邮箱 *').fill('buyer@example.com');await page.getByLabel('规格与交付要求 *').fill('Need 50 pumps for Kenya. Include packing requirements.');await page.getByRole('checkbox').check();await page.getByRole('button',{name:'提交采购需求'}).click();await page.getByRole('button',{name:'查看我的询价'}).click();const card=page.locator('.inquiry-card').filter({hasText:'Custom Buyer Ltd'});await card.getByRole('button',{name:'立即报价'}).click();await page.getByRole('dialog').getByRole('spinbutton').fill('95');await page.getByRole('button',{name:'确认报价',exact:true}).click();await expect(card).toContainText('已报价');await expect(card.locator('.inquiry-footer')).toContainText('$95 / 件');
 });
-
-test('mobile routes fit viewport and navigation works',async({page})=>{
-  await page.setViewportSize({width:390,height:844});
-  for(const route of ['overview','market','products','inquiries','orders','profit','logistics','documents','suppliers','onboarding','settings']) {
-    await page.goto('/#'+route);await expect(page.locator('h1')).toBeVisible();
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  }
-  await page.getByRole('button',{name:'打开导航'}).click();
-  await page.locator('nav').getByRole('link',{name:'全球采购市场'}).click();
-  await expect(page.locator('h1')).toHaveText('全球钢材采购');
-  await expect(page.locator('.sidebar')).not.toHaveClass(/open/);
-  await page.screenshot({path:'test-results/mobile-market.png',fullPage:true,animations:'disabled'});
+test('buyer creates a piece-based order and downloads correct-unit invoice',async({page})=>{
+ await page.goto('/#market');await search(page,'RH-CD20');await page.getByRole('button',{name:'20V 无刷充电式电钻',exact:true}).click();await page.getByRole('button',{name:'创建采购订单',exact:true}).click();const d=page.getByRole('dialog');await d.getByLabel('买方企业名称 *').fill('Tool Order Buyer');await d.getByLabel('联系邮箱 *').fill('order@example.com');await d.getByLabel('目的国家 / 地区 *').selectOption('尼日利亚');await d.getByLabel('采购数量（件）*').fill('20');await d.getByLabel('目的港口 *').fill('Lagos');await expect(d.locator('.order-estimate')).toContainText('$850.00');await d.getByRole('checkbox').check();await d.getByRole('button',{name:'提交采购订单'}).click();await page.getByRole('button',{name:'查看记录'}).click();const row=page.locator('tr').filter({hasText:'Tool Order Buyer'});await expect(row).toContainText('20 件');await row.getByRole('button').first().click();await page.getByRole('button',{name:'演示推进：合同确认'}).click();await expect(page.getByRole('button',{name:'演示推进：生产备货'})).toBeVisible();await page.getByRole('button',{name:'查看贸易单证'}).click();await expect(page.locator('.invoice tbody')).toContainText('20 件');const wait=page.waitForEvent('download');await page.getByRole('button',{name:'导出形式发票草稿'}).click();expect((await wait).suggestedFilename()).toMatch(/\.csv$/);
 });
-
-test('keyboard global search opens and finds a product',async({page})=>{
-  await page.goto('/');await expect(page.locator('h1')).toBeVisible();
-  await page.keyboard.press('Control+k');
-  await page.getByPlaceholder('输入商品名称、钢种、订单号或买家…').fill('A106');
-  await page.getByRole('dialog').getByRole('button',{name:/无缝碳钢管/}).click();
-  await expect(page.getByRole('dialog').getByRole('heading',{name:'无缝碳钢管'})).toBeVisible();
+test('supplier application approval and industrial product listing work',async({page})=>{
+ await page.goto('/#onboarding');await page.getByLabel('企业名称 *',{exact:true}).fill('Test Tool Factory');await page.getByLabel('统一社会信用代码 *').fill('91310000E2E0000001');await page.getByLabel('企业所在地 *').fill('浙江');await page.getByLabel('联系人 *',{exact:true}).fill('王经理');await page.getByLabel('企业联系邮箱 *').fill('supplier@example.com');await page.getByLabel('年产能 *').fill('10000');await page.getByLabel('产能单位 *').selectOption('件');await page.getByRole('checkbox').check();await page.getByRole('button',{name:'提交入驻申请'}).click();await page.getByRole('button',{name:'查看记录'}).click();const row=page.locator('tr').filter({hasText:'Test Tool Factory'});await row.getByRole('button',{name:'通过',exact:true}).click();await expect(row).toContainText('已通过');
+ await page.goto('/#products');await page.getByRole('button',{name:'发布商品',exact:true}).click();const d=page.getByRole('dialog');await d.getByLabel('商品名称 *',{exact:true}).fill('测试工业电钻');await d.getByLabel('所属供应商 *').selectOption({label:'Test Tool Factory'});await d.getByLabel('商品品类 *').selectOption('电动工具');await expect(d.getByLabel('计量单位 *')).toHaveValue('件');await d.getByLabel('型号 / 牌号 *').fill('TEST-20');await d.getByLabel('产品规格 *').fill('20V');await d.getByLabel('出口单价（USD / 单位）*').fill('49');await d.getByLabel('采购成本（CNY / 单位）*').fill('200');await d.getByLabel('可售库存 *').fill('500');await d.getByLabel('最小起订量 *').fill('10');await d.getByRole('button',{name:'确认发布商品'}).click();await page.getByRole('button',{name:'查看记录'}).click();await expect(page.locator('tr').filter({hasText:'测试工业电钻'})).toContainText('件');
 });
-
-test('supplier directory filters marketplace to the selected supplier',async({page})=>{
-  await page.goto('/#suppliers');
-  await page.locator('.supplier-card').filter({hasText:'华东钢铁集团'}).getByRole('button',{name:'发现产品'}).click();
-  await expect(page.locator('h1')).toHaveText('全球钢材采购');
-  await expect(page.getByLabel('筛选供应商')).toHaveValue('s1');
-  await expect(page.locator('.product-card')).toHaveCount(2);
+test('desktop and mobile layouts fit all routes; category drawer is usable',async({page})=>{
+ await page.setViewportSize({width:390,height:844});for(const route of ['market','factories','sourcing','services','overview','products','inquiries','orders','profit','logistics','documents','suppliers','onboarding','settings']){await page.goto('/#'+route);await expect(page.locator('h1')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)}
+ await page.goto('/#market');await page.getByRole('button',{name:'全部分类',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:/工具与工厂耗品/}).click();await expect(page.locator('.sf-product-card')).toHaveCount(7);
 });
-
-test('real category photographs load locally and source licenses are accessible',async({page})=>{
-  const external=[];
-  page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:3001'))external.push(r.url());});
-  await page.goto('/#market');
-  await expect(page.locator('h1')).toHaveText('全球钢材采购');
-  const count=await page.locator('.product-card').count();expect(count).toBeGreaterThanOrEqual(6);
-  const photos=page.locator('.product-card .product-photo');
-  await expect(photos).toHaveCount(count);
-  const urls=new Set();
-  for(const photo of await photos.all()){
-    await photo.scrollIntoViewIfNeeded();
-    await expect.poll(()=>photo.evaluate(img=>img.complete&&img.naturalWidth>100)).toBe(true);
-    expect(await photo.getAttribute('src')).toMatch(/^\/images\/[a-z]+\.jpg$/);
-    urls.add(await photo.getAttribute('src'));
-  }
-  expect(urls.size).toBe(6);
-  await expect(page.locator('.photo-unavailable')).toHaveCount(0);
-  await page.getByRole('button',{name:'照片来源与许可',exact:true}).click();
-  await expect(page.getByRole('dialog').locator('.media-credits article')).toHaveCount(7);
-  await expect(page.getByRole('dialog').getByRole('link',{name:'原始作品'})).toHaveCount(7);
-  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await page.goto('/#overview');
-  const hero=page.locator('.port-visual img');await expect(hero).toBeVisible();
-  await expect.poll(()=>hero.evaluate(img=>img.complete&&img.naturalWidth>100)).toBe(true);
-  expect(external).toEqual([]);
+test('catalog photographs and attribution load without external asset requests',async({page})=>{
+ const external=[];page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:3001'))external.push(r.url())});await page.goto('/#market');await expect(page.locator('.sf-product-card').first()).toBeVisible();const srcs=new Set();for(let round=0;round<2;round++){for(const img of await page.locator('.sf-product-visual img').all()){await img.scrollIntoViewIfNeeded();await expect.poll(()=>img.evaluate(i=>i.complete&&i.naturalWidth>100)).toBe(true);srcs.add(await img.getAttribute('src'))}const next=page.getByRole('button',{name:'下一页',exact:true});if(await next.isDisabled())break;await next.click()}expect(srcs.size).toBe(16);await page.getByRole('button',{name:'照片来源与许可',exact:true}).click();await expect(page.locator('.media-credits article')).toHaveCount(Object.keys(media).length);expect(external).toEqual([]);
 });

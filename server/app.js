@@ -1,6 +1,7 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { calculateProfit, orderStatuses, validateOrder } from './domain.js';
+import { productCategories, categoryImages, units, unitOf } from '../shared/catalog.js';
 const text = (value, label, max = 200) => {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new Error(`${label}不能为空，且长度不得超过 ${max} 字符`);
   return value.trim();
@@ -20,10 +21,10 @@ export function createApp(store) {
     const b = req.body;
     if (!store.get('suppliers', b.supplierId)) throw new Error('请选择有效供应商');
     const category = text(b.category, '品类');
-    if (!['钢卷', '钢管', '建筑钢材', '钢板', '型钢'].includes(category)) throw new Error('品类无效');
+    if (!productCategories.includes(category)) throw new Error('品类无效');
     const stock = number(b.stock, '库存', 1, 1e7), moq = number(b.moq, '起订量', 1, 1e7);
     if (!Number.isSafeInteger(stock) || !Number.isSafeInteger(moq) || moq > stock) throw new Error('库存与起订量须为整数，且库存不少于起订量');
-    const item = { id: randomUUID(), name: text(b.name, '商品名称', 80), en: text(b.en || b.name, '英文名称', 120), category, grade: text(b.grade, '钢种牌号', 80), spec: text(b.spec, '规格', 150), price: number(b.price, '售价', 1, 1e6), cost: number(b.cost, '成本', 0, 1e6), stock, moq, port: text(b.port, '装运港'), term: ['FOB', 'CIF', 'CFR', 'EXW'].includes(b.term) ? b.term : 'FOB', supplierId: b.supplierId, image: ({ 钢卷: 'coil', 钢管: 'pipe', 建筑钢材: 'rebar', 钢板: 'sheet', 型钢: 'beam' })[category], certifications: text(b.certifications || '待补充', '认证'), lead: text(b.lead || '15–30 天', '交期'), status: '在售', createdAt: new Date().toISOString() };
+    const item = { id: randomUUID(), name: text(b.name, '商品名称', 80), en: text(b.en || b.name, '英文名称', 120), category, unit: units.includes(b.unit) ? b.unit : unitOf({category}), grade: text(b.grade, '型号或牌号', 80), spec: text(b.spec, '规格', 150), price: number(b.price, '售价', 1, 1e6), cost: number(b.cost, '成本', 0, 1e6), stock, moq, port: text(b.port, '装运港'), term: ['FOB', 'CIF', 'CFR', 'EXW'].includes(b.term) ? b.term : 'FOB', supplierId: b.supplierId, image: categoryImages[category].includes(b.image) ? b.image : categoryImages[category][0], certifications: text(b.certifications || '待补充', '认证'), lead: text(b.lead || '15–30 天', '交期'), status: '在售', createdAt: new Date().toISOString() };
     store.put('products', item); res.status(201).json(item);
   });
   app.patch('/api/products/:id', (req, res) => {
@@ -37,7 +38,7 @@ export function createApp(store) {
     const registration = text(b.registration, '统一社会信用代码', 18).toUpperCase();
     if (!/^[0-9A-Z]{18}$/.test(registration)) throw new Error('统一社会信用代码须为 18 位字母或数字');
     if (store.all('applications').some(a => a.registration === registration)) throw new Error('该企业已提交申请，请勿重复提交');
-    const item = { id: `APP-${randomUUID().slice(0, 8)}`, company: text(b.company, '企业名称', 100), registration, contact: text(b.contact, '联系人', 80), email: email(b.email), location: text(b.location, '企业所在地'), category: text(b.category, '主营品类'), capacity: number(b.capacity, '年产能', 1, 1e9), certifications: text(b.certifications || '待补充', '认证'), status: '待审核', createdAt: new Date().toISOString() };
+    const item = { id: `APP-${randomUUID().slice(0, 8)}`, company: text(b.company, '企业名称', 100), registration, contact: text(b.contact, '联系人', 80), email: email(b.email), location: text(b.location, '企业所在地'), category: text(b.category, '主营品类'), capacity: number(b.capacity, '年产能', 1, 1e9), capacityUnit: units.includes(b.capacityUnit) ? b.capacityUnit : '吨', certifications: text(b.certifications || '待补充', '认证'), status: '待审核', createdAt: new Date().toISOString() };
     store.put('applications', item); res.status(201).json(item);
   });
   app.patch('/api/applications/:id', (req, res) => {
@@ -52,7 +53,7 @@ export function createApp(store) {
     const b = req.body, p = store.get('products', b.productId);
     if (!p || p.status !== '在售') throw new Error('商品不存在或已下架');
     const total = validateOrder(p, b.quantity);
-    const item = { id: `SF-${new Date().toISOString().slice(0, 7).replace('-', '')}-${randomUUID().slice(0, 6).toUpperCase()}`, productId: p.id, productName: p.name, supplierId: p.supplierId, buyer: text(b.buyer, '买方企业'), email: email(b.email), country: text(b.country, '目的国'), destination: text(b.destination, '目的港'), quantity: b.quantity, unitPrice: p.price, costCny: p.cost, exchangeRate: 7.12, feeRate: 2, total, term: p.term, status: '待确认', createdAt: new Date().toISOString(), history: [{ status: '待确认', at: new Date().toISOString() }] };
+    const item = { id: `SF-${new Date().toISOString().slice(0, 7).replace('-', '')}-${randomUUID().slice(0, 6).toUpperCase()}`, productId: p.id, productName: p.name, supplierId: p.supplierId, buyer: text(b.buyer, '买方企业'), email: email(b.email), country: text(b.country, '目的国'), destination: text(b.destination, '目的港'), quantity: b.quantity, unit: unitOf(p), unitPrice: p.price, costCny: p.cost, exchangeRate: 7.12, feeRate: 2, total, term: p.term, status: '待确认', createdAt: new Date().toISOString(), history: [{ status: '待确认', at: new Date().toISOString() }] };
     store.db.exec('BEGIN IMMEDIATE');
     try { store.put('products', { ...p, stock: p.stock - b.quantity }); store.put('orders', item); store.db.exec('COMMIT'); } catch (e) { store.db.exec('ROLLBACK'); throw e; }
     res.status(201).json(item);
@@ -70,8 +71,29 @@ export function createApp(store) {
     if (!p || p.status !== '在售') throw new Error('商品不存在或已下架');
     const quantity = number(b.quantity, '询价数量', p.moq, p.stock);
     if (!Number.isSafeInteger(quantity)) throw new Error('询价数量须为整数');
-    const item = { id: `RFQ-${randomUUID().slice(0, 8).toUpperCase()}`, productId: p.id, productName: p.name, buyer: text(b.buyer, '公司名称'), email: email(b.email), country: text(b.country, '目的国'), quantity, message: text(b.message, '采购要求', 2000), status: '待报价', createdAt: new Date().toISOString() };
+    const item = { id: `RFQ-${randomUUID().slice(0, 8).toUpperCase()}`, productId: p.id, productName: p.name, buyer: text(b.buyer, '公司名称'), email: email(b.email), country: text(b.country, '目的国'), quantity, unit: unitOf(p), supplierId: p.supplierId, message: text(b.message, '采购要求', 2000), status: '待报价', createdAt: new Date().toISOString() };
     store.put('inquiries', item); res.status(201).json(item);
+  });
+  app.post('/api/inquiries/batch', (req,res) => {
+    const b=req.body;
+    if(!Array.isArray(b.items)||!b.items.length||b.items.length>20)throw new Error('询价篮须包含 1–20 款商品');
+    if(b.items.some(x=>!x||typeof x.productId!=='string'))throw new Error('请选择有效的询价商品');
+    if(new Set(b.items.map(x=>x.productId)).size!==b.items.length)throw new Error('请合并重复的询价商品');
+    const buyer=text(b.buyer,'公司名称'),contact=email(b.email),country=text(b.country,'目的国'),message=text(b.message,'采购要求',2000);
+    const groupId='RFQ-G-'+randomUUID().slice(0,8).toUpperCase(),now=new Date().toISOString();
+    const rows=b.items.map(x=>{
+      const p=store.get('products',x.productId);if(!p||p.status!=='在售')throw new Error('询价商品不存在或已下架');
+      const quantity=number(x.quantity,'采购量',p.moq,1e7);if(!Number.isSafeInteger(quantity))throw new Error('采购量须为整数');
+      return {id:'RFQ-'+randomUUID().slice(0,8).toUpperCase(),groupId,productId:p.id,productName:p.name,supplierId:p.supplierId,quantity,unit:unitOf(p),buyer,email:contact,country,message,status:'待报价',createdAt:now};
+    });
+    store.db.exec('BEGIN IMMEDIATE');try{rows.forEach(x=>store.put('inquiries',x));store.db.exec('COMMIT')}catch(e){store.db.exec('ROLLBACK');throw e;}
+    res.status(201).json({id:groupId,items:rows,status:'待报价',createdAt:now});
+  });
+  app.post('/api/inquiries/custom', (req,res) => {
+    const b=req.body;const quantity=number(b.quantity,'采购量',1,1e7);if(!Number.isSafeInteger(quantity))throw new Error('采购量须为整数');
+    if(!units.includes(b.unit))throw new Error('计量单位无效');
+    const row={id:'RFQ-'+randomUUID().slice(0,8).toUpperCase(),productId:null,custom:true,productName:text(b.productName,'采购商品',120),category:text(b.category,'采购品类',80),quantity,unit:b.unit,buyer:text(b.buyer,'公司名称'),email:email(b.email),country:text(b.country,'目的国'),message:text(b.message,'采购要求',2000),status:'待报价',createdAt:new Date().toISOString()};
+    store.put('inquiries',row);res.status(201).json(row);
   });
   app.patch('/api/inquiries/:id/quote', (req, res) => {
     const item = store.get('inquiries', req.params.id);

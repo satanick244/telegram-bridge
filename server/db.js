@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { seedIndustrialCatalog } from './industrial-seed.js';
 export function createDatabase(file = process.env.DATABASE_PATH || './data/steelflow.db') {
   if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
@@ -36,5 +37,6 @@ export function createDatabase(file = process.env.DATABASE_PATH || './data/steel
     put('inquiries', { id: 'RFQ-260018', productId: 'p6', productName: '热轧 H 型钢', buyer: 'Khalid Building Materials', country: '阿联酋', email: 'buyer@example.com', quantity: 500, message: '需要 S355JR 材质，支持第三方验货，交货期 30 天内。', status: '待报价', createdAt: '2026-10-22T06:00:00.000Z' });
     put('inquiries', { id: 'RFQ-260017', productId: 'p2', productName: '镀锌钢卷', buyer: 'Vina Steel Import', country: '越南', email: 'buyer@example.com', quantity: 200, message: '锌层 Z120，请提供 FOB 报价及材质证明。', status: '已报价', quotedPrice: 680, createdAt: '2026-10-21T06:00:00.000Z' });
   }
+  seedIndustrialCatalog({db,get,put});
   return { db, all, get, put };
 }

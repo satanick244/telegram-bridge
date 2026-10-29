@@ -75,5 +75,115 @@
     "originalTitle": "File:Aerial image of the Bremerhaven container terminal (view from the southeast).jpg",
     "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/8/86/Aerial_image_of_the_Bremerhaven_container_terminal_%28view_from_the_southeast%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
     "sha256": "92d8b7a78e0c648c3fee5c7d16c96419206aabca1d3285cc019583543f3af078"
+  },
+  "drill": {
+    "src": "/images/drill.jpg",
+    "alt": "充电电钻实拍 · 品类示意",
+    "author": "Tony Webster from Minneapolis, Minnesota, United States",
+    "source": "https://commons.wikimedia.org/wiki/File:Black_and_Decker_Matrix_Lithium_20v_Cordless_Drill_(41159305895).jpg",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "originalTitle": "File:Black and Decker Matrix Lithium 20v Cordless Drill (41159305895).jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/e/e5/Black_and_Decker_Matrix_Lithium_20v_Cordless_Drill_%2841159305895%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "1f8ce46b8a2de7ca283fed7ed19518540438d4d1d8ed06539675195014225ec9"
+  },
+  "grinder": {
+    "src": "/images/grinder.jpg",
+    "alt": "角磨机实拍 · 品类示意",
+    "author": "Mark Hunter",
+    "source": "https://commons.wikimedia.org/wiki/File:Makita_GA9050_Angle_Grinder.jpg",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "originalTitle": "File:Makita GA9050 Angle Grinder.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/4/48/Makita_GA9050_Angle_Grinder.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "bf366fb6dc512ba1b372685780e6ab5fc0a08e19625de2276b36c564e5735219"
+  },
+  "hammer": {
+    "src": "/images/hammer.jpg",
+    "alt": "电锤实拍 · 品类示意",
+    "author": "CBX",
+    "source": "https://commons.wikimedia.org/wiki/File:Bosch_GBH2-26_professional_Rotary_Hammer_Drill_PICT4578.jpg",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "originalTitle": "File:Bosch GBH2-26 professional Rotary Hammer Drill PICT4578.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/8/88/Bosch_GBH2-26_professional_Rotary_Hammer_Drill_PICT4578.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "212432a77da54459062a3d7d27375d26b8dd19cb7129cfc35e222e113e0984b3"
+  },
+  "saw": {
+    "src": "/images/saw.jpg",
+    "alt": "电圆锯实拍 · 品类示意",
+    "author": "HutheMeow",
+    "source": "https://commons.wikimedia.org/wiki/File:Circular_saw_-_Ozito_2.jpg",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "originalTitle": "File:Circular saw - Ozito 2.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/a/aa/Circular_saw_-_Ozito_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "38ddffb3d4ab04e054edb251d783c2d7c6082421499fb219923bf921ac5ab587"
+  },
+  "sander": {
+    "src": "/images/sander.jpg",
+    "alt": "砂光机实拍 · 品类示意",
+    "author": "Dave Pape",
+    "source": "https://commons.wikimedia.org/wiki/File:Random_orbit_sander.jpg",
+    "license": "Public domain",
+    "licenseUrl": "https://commons.wikimedia.org/wiki/File:Random_orbit_sander.jpg",
+    "originalTitle": "File:Random orbit sander.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/e/e0/Random_orbit_sander.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "6252ca4f7053579b1b9acac135c1d53971979fec93a4e9380961d90fc4fadf2a"
+  },
+  "bits": {
+    "src": "/images/bits.jpg",
+    "alt": "批头套装实拍 · 品类示意",
+    "author": "Robbie Sproule from Montreal, Canada",
+    "source": "https://commons.wikimedia.org/wiki/File:Jet_screwdriver_bits._(34770486303).jpg",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "originalTitle": "File:Jet screwdriver bits. (34770486303).jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/8/82/Jet_screwdriver_bits._%2834770486303%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "1f8ce46e4b7e0953e6caab2e540e884a912063ca8e3dbdba7771e436e0159f4a"
+  },
+  "solar": {
+    "src": "/images/solar.jpg",
+    "alt": "光伏板实拍 · 品类示意",
+    "author": "ArticCynda",
+    "source": "https://commons.wikimedia.org/wiki/File:Monocrystalline_silicon_solar_panel.jpg",
+    "license": "CC0",
+    "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "originalTitle": "File:Monocrystalline silicon solar panel.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/d/d6/Monocrystalline_silicon_solar_panel.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "a7a4b157c0b3999eed45ddcc9eb8201d0f008c69e6cea915dcf732f9b2b75b35"
+  },
+  "meter": {
+    "src": "/images/meter.jpg",
+    "alt": "数字万用表实拍 · 品类示意",
+    "author": "oomlout",
+    "source": "https://commons.wikimedia.org/wiki/File:Digital_Multimeter.jpg",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "originalTitle": "File:Digital Multimeter.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/9/9a/Digital_Multimeter.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "9ae41a8c67deb43063823f27248216781b2c91cbe42efa5b189ce043d6879a03"
+  },
+  "helmet": {
+    "src": "/images/helmet.jpg",
+    "alt": "安全帽实拍 · 品类示意",
+    "author": "Wishofflying",
+    "source": "https://commons.wikimedia.org/wiki/File:Ameriza-entilated_safety_helmet.jpg",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "originalTitle": "File:Ameriza-entilated safety helmet.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/5/56/Ameriza-entilated_safety_helmet.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "8c8a3008e58f24c6e3831f32a544e172f0146b83fa9b6668ec7985a12cb2fd3e"
+  },
+  "gloves": {
+    "src": "/images/gloves.jpg",
+    "alt": "作业手套实拍 · 品类示意",
+    "author": "el cajon yacht club",
+    "source": "https://commons.wikimedia.org/wiki/File:Leather_work_gloves_Friday_2020-10-23_10-51-49_873.jpg",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "originalTitle": "File:Leather work gloves Friday 2020-10-23 10-51-49 873.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/c/cf/Leather_work_gloves_Friday_2020-10-23_10-51-49_873.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha256": "0da5226bf066d1ec17798f3f046967fd96d1b353b10bc421bbbe42436d82e69c"
   }
 }

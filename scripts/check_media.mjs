@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 const media = JSON.parse(fs.readFileSync(new URL('../src/data/catalog-media.json', import.meta.url)));
-const required = ['coil', 'galvanized', 'pipe', 'rebar', 'sheet', 'beam', 'port'];
+const required = ['coil', 'galvanized', 'pipe', 'rebar', 'sheet', 'beam', 'port', 'drill', 'grinder', 'hammer', 'saw', 'sander', 'bits', 'solar', 'meter', 'helmet', 'gloves'];
 const errors = [];
 for (const type of required) {
   const asset = media[type];
@@ -20,4 +20,4 @@ for (const type of required) {
   if ((!isJpeg && !isPng && !isWebp) || bytes.length < 10000) errors.push(`${type}: photo is not a valid downloaded bitmap`);
 }
 if (errors.length) { console.error('Photo readiness check failed:\n' + errors.map(x => '- ' + x).join('\n')); process.exit(1); }
-console.log('All 6 steel-category photographs and the port photograph exist locally with source/license metadata.');
+console.log('All 17 industrial-category and port photographs exist locally with source/license metadata.');

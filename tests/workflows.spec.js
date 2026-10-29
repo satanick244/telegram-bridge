@@ -10,7 +10,7 @@ test('all public and workspace pages render without browser errors',async({page}
 test('category deep link, search, prices, favorites, comparison and catalog language work',async({page})=>{
  await page.goto('/?category=gongjuyugongchangyihaopin--gongju--diandonggongju#market');await expect(page.locator('.sf-product-card')).toHaveCount(6);
  await page.getByRole('checkbox',{name:'对比'}).nth(0).check();await page.getByRole('checkbox',{name:'对比'}).nth(1).check();await page.getByRole('button',{name:'比较商品'}).click();await expect(page.getByRole('dialog').locator('thead img')).toHaveCount(2);await page.getByRole('button',{name:'关闭',exact:true}).click();
- await search(page,'RH-CD20');await expect(page.locator('.sf-product-card')).toHaveCount(1);await page.getByRole('button',{name:'收藏 20V 无刷充电式电钻',exact:true}).click();await page.getByRole('button',{name:/我的收藏/}).click();await expect(page.locator('.sf-product-card')).toHaveCount(1);
+ await search(page,'RH-CD20');await expect(page.locator('.sf-product-card')).toHaveCount(1);await page.getByRole('button',{name:'收藏 20V 无刷充电式电钻',exact:true}).click();await page.locator('.sf-catalog-heading').getByRole('button',{name:/我的收藏/}).click();await expect(page.locator('.sf-product-card')).toHaveCount(1);
  await page.reload();await expect(page.getByRole('textbox',{name:'搜索商品',exact:true})).toHaveValue('RH-CD20');await page.getByRole('button',{name:'简体中文',exact:true}).click();await expect(page.locator('.sf-product-name')).toContainText('Brushless');
 });
 test('quote basket persists and submits a sourcing group',async({page})=>{

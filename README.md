@@ -91,7 +91,7 @@ https://render.com/deploy?repo=https://github.com/satanick244/telegram-bridge
 
 ## 工业风视觉与真实摄影
 
-采购前台采用森林绿、暖白与青柠色的简约工业视觉；后台保留海军蓝与青绿色。商品卡片、详情、表格和采购表单使用本地真实摄影素材；照片仅为品类示意，不代表实际供应商或具体牌号。作者与许可可在网页页脚「照片来源与许可」或 [PHOTO-CREDITS.md](docs/PHOTO-CREDITS.md) 查看。使用 `npm run check:media` 核验本地素材与来源记录。
+采购前台采用白底、海军蓝与橙色的采购平台视觉；首屏为行业分类、商品推荐、采购需求三栏，下方为全宽商品网格，手机端自动折叠。后台统一蓝色重点色。商品卡片、详情、表格和采购表单使用本地真实摄影素材；照片仅为品类示意，不代表实际供应商或具体牌号。作者与许可可在网页页脚「照片来源与许可」或 [PHOTO-CREDITS.md](docs/PHOTO-CREDITS.md) 查看。使用 `npm run check:media` 核验本地素材与来源记录。
 
 ## 本次参考与改进
 

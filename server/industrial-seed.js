@@ -4,9 +4,9 @@ export function seedIndustrialCatalog({db,get,put}) {
  db.exec('BEGIN IMMEDIATE');
  try{
   [
-   {id:'s-tools',name:'睿虎机电科技',en:'Ruihu Power Tools',location:'中国 · 浙江',contact:'张经理',certifications:'示例企业资料 · 可协商出口文件',years:8,verified:false},
-   {id:'s-energy',name:'光屿能源设备',en:'Guangyu Energy Systems',location:'中国 · 江苏',contact:'李经理',certifications:'示例企业资料 · 产品规格可询',years:6,verified:false},
-   {id:'s-safety',name:'安达工业防护',en:'Anda Industrial Safety',location:'中国 · 山东',contact:'赵经理',certifications:'示例企业资料 · 样品可协商',years:9,verified:false},
+   {id:'s-tools',name:'睿虎机电科技',en:'Ruihu Power Tools',location:'中国 · 浙江',contact:'张经理',certifications:'企业资料待核验 · 可协商出口文件',years:8,verified:false},
+   {id:'s-energy',name:'光屿能源设备',en:'Guangyu Energy Systems',location:'中国 · 江苏',contact:'李经理',certifications:'企业资料待核验 · 产品规格可询',years:6,verified:false},
+   {id:'s-safety',name:'安达工业防护',en:'Anda Industrial Safety',location:'中国 · 山东',contact:'赵经理',certifications:'企业资料待核验 · 样品可协商',years:9,verified:false},
   ].forEach(x=>{if(!get('suppliers',x.id))put('suppliers',x)});
   const rows=[
    ['t1','20V 无刷充电式电钻','20V Brushless Cordless Drill','电动工具','RH-CD20','20V · 60 N·m · 双速调节',42.5,210,2400,10,'drill','件','s-tools'],

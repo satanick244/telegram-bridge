@@ -15,6 +15,7 @@ export function calculateProfit({ price, cost, quantity, freight = 0, other = 0,
 }
 export const orderStatuses = ['待确认', '合同确认', '生产备货', '待装运', '运输中', '已完成'];
 export function validateOrder(product, quantity) {
+  if(product.catalogOnly || !Number.isFinite(product.price) || !Number.isFinite(product.stock)) throw new Error('该商品需先询价并确认供应、价格与库存后才能下单');
   if (!Number.isSafeInteger(quantity) || quantity < product.moq) throw new Error(`采购量须为整数，且不少于 ${product.moq} ${unitOf(product)}`);
   if (quantity > product.stock) throw new Error('当前可售库存不足');
   return round(product.price * quantity);

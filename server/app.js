@@ -14,12 +14,12 @@ const email = value => { const v = text(value, '邮箱'); if (!/^[^\s@]+@[^\s@]+
 export function createApp(store) {
   const app = express();
   app.use(express.json({ limit: '100kb' }));
-  app.get('/api/health', (req, res) => res.json({ ok: true, mode: 'demo' }));
-  app.get('/api/bootstrap', (req, res) => res.json(Object.fromEntries(['products', 'suppliers', 'orders', 'inquiries', 'applications'].map(t => [t, store.all(t).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''))]))));
+  app.get('/api/health', (req, res) => res.json({ ok: true, mode: 'sourcing' }));
+  app.get('/api/bootstrap', (req, res) => res.json(Object.fromEntries(['products', 'suppliers', 'orders', 'inquiries', 'applications'].map(t => [t, store.all(t).filter(x=>!x.isSample).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''))]))));
   app.post('/api/profit', (req, res) => res.json(calculateProfit(req.body)));
   app.post('/api/products', (req, res) => {
     const b = req.body;
-    if (!store.get('suppliers', b.supplierId)) throw new Error('请选择有效供应商');
+    if (!store.get('suppliers', b.supplierId) || store.get('suppliers', b.supplierId).isSample) throw new Error('请选择有效供应商');
     const category = text(b.category, '品类');
     if (!productCategories.includes(category)) throw new Error('品类无效');
     const stock = number(b.stock, '库存', 1, 1e7), moq = number(b.moq, '起订量', 1, 1e7);
@@ -69,7 +69,7 @@ export function createApp(store) {
   app.post('/api/inquiries', (req, res) => {
     const b = req.body, p = store.get('products', b.productId);
     if (!p || p.status !== '在售') throw new Error('商品不存在或已下架');
-    const quantity = number(b.quantity, '询价数量', p.moq, p.stock);
+    const quantity = number(b.quantity, '询价数量', p.moq||1, p.catalogOnly?1e7:p.stock);
     if (!Number.isSafeInteger(quantity)) throw new Error('询价数量须为整数');
     const item = { id: `RFQ-${randomUUID().slice(0, 8).toUpperCase()}`, productId: p.id, productName: p.name, buyer: text(b.buyer, '公司名称'), email: email(b.email), country: text(b.country, '目的国'), quantity, unit: unitOf(p), supplierId: p.supplierId, message: text(b.message, '采购要求', 2000), status: '待报价', createdAt: new Date().toISOString() };
     store.put('inquiries', item); res.status(201).json(item);
@@ -83,7 +83,7 @@ export function createApp(store) {
     const groupId='RFQ-G-'+randomUUID().slice(0,8).toUpperCase(),now=new Date().toISOString();
     const rows=b.items.map(x=>{
       const p=store.get('products',x.productId);if(!p||p.status!=='在售')throw new Error('询价商品不存在或已下架');
-      const quantity=number(x.quantity,'采购量',p.moq,1e7);if(!Number.isSafeInteger(quantity))throw new Error('采购量须为整数');
+      const quantity=number(x.quantity,'采购量',p.moq||1,1e7);if(!Number.isSafeInteger(quantity))throw new Error('采购量须为整数');
       return {id:'RFQ-'+randomUUID().slice(0,8).toUpperCase(),groupId,productId:p.id,productName:p.name,supplierId:p.supplierId,quantity,unit:unitOf(p),buyer,email:contact,country,message,status:'待报价',createdAt:now};
     });
     store.db.exec('BEGIN IMMEDIATE');try{rows.forEach(x=>store.put('inquiries',x));store.db.exec('COMMIT')}catch(e){store.db.exec('ROLLBACK');throw e;}

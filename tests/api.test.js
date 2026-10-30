@@ -7,8 +7,13 @@ import { once } from 'node:events';
 import { createDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { calculateProfit } from '../server/domain.js';
-async function setup(t) {
+async function setup(t,{fixtures=true}={}) {
   const store=createDatabase(':memory:');
+  if(fixtures){
+    store.put('suppliers',{...store.get('suppliers','s1'),isSample:false});
+    store.put('products',{...store.get('products','p1'),catalogOnly:false,supplierId:'s1',price:528,cost:3050,stock:4800,moq:25});
+    store.put('products',{...store.get('products','t1'),catalogOnly:false,supplierId:'s1',price:42.5,cost:210,stock:2400,moq:10});
+  }
   const server=createApp(store).listen(0,'127.0.0.1');
   await once(server,'listening');
   t.after(()=>{server.closeAllConnections();server.close();store.db.close();});
@@ -25,7 +30,7 @@ test('profit supports loss and rejects invalid exchange rates and fees',()=>{
   for(const exchangeRate of [0,-1,NaN])assert.throws(()=>calculateProfit({price:500,cost:3000,quantity:100,exchangeRate}));
   assert.throws(()=>calculateProfit({price:500,cost:3000,quantity:100,feeRate:101}));
 });
-test('bootstrap loads meaningful demo data',async t=>{const {request}=await setup(t);const r=await request('/bootstrap');assert.equal(r.status,200);assert.equal(r.body.products.length,16);assert.equal(r.body.suppliers.length,6);assert.equal(r.body.orders.length,4);});
+test('bootstrap exposes selection catalog and excludes sample suppliers and trades',async t=>{const {request}=await setup(t,{fixtures:false});const r=await request('/bootstrap');assert.equal(r.status,200);assert.equal(r.body.products.length,48);assert.equal(r.body.suppliers.length,0);assert.equal(r.body.orders.length,0);});
 test('orders use server price, reserve inventory and persist fulfillment history',async t=>{
   const {request,store}=await setup(t),stock=store.get('products','p1').stock;
   const r=await request('/orders',{...order,total:1,unitPrice:1});assert.equal(r.status,201);assert.equal(r.body.total,13200);assert.equal(r.body.unitPrice,528);assert.equal(store.get('products','p1').stock,stock-25);
@@ -75,9 +80,11 @@ test('SQLite keeps saved data after a close and reopen without duplicating seed 
   const dir=mkdtempSync(path.join(tmpdir(),'steelflow-test-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
   const file=path.join(dir,'persist.db');const first=createDatabase(file);
   first.put('applications',{id:'persist-check',company:'持久化测试',status:'待审核'});first.db.close();
-  const second=createDatabase(file);assert.equal(second.get('applications','persist-check').company,'持久化测试');assert.equal(second.all('products').length,16);second.db.close();
+  const second=createDatabase(file);assert.equal(second.get('applications','persist-check').company,'持久化测试');assert.equal(second.all('products').length,48);second.db.close();
 });
 
 test('piece-based order snapshots its unit and cannot use a client price',async t=>{const {request}=await setup(t);const r=await request('/orders',{...order,productId:'t1',quantity:20,total:1});assert.equal(r.status,201);assert.equal(r.body.unit,'件');assert.equal(r.body.total,850)});
 test('batch inquiries are atomic, preserve units and do not reserve inventory',async t=>{const {request,store}=await setup(t);const before=store.all('inquiries').length,stock=store.get('products','t1').stock;const b={buyer:'Mixed buyer',email:'buyer@example.com',country:'肯尼亚',message:'Test mixed sourcing',items:[{productId:'t1',quantity:20},{productId:'p1',quantity:25}]};const r=await request('/inquiries/batch',b);assert.equal(r.status,201);assert.deepEqual(r.body.items.map(x=>x.unit),['件','吨']);assert.equal(store.get('products','t1').stock,stock);assert.equal(store.all('inquiries').length,before+2);assert.equal((await request('/inquiries/batch',{...b,items:[...b.items,{productId:'missing',quantity:1}]})).status,400);assert.equal(store.all('inquiries').length,before+2)});
 test('custom sourcing supports an unlisted product but validates quantity and unit',async t=>{const {request}=await setup(t);const b={productName:'Custom pump',category:'其他采购',quantity:50,unit:'件',buyer:'Pump importer',email:'p@example.com',country:'尼日利亚',message:'24V with delivery to Lagos'};assert.equal((await request('/inquiries/custom',b)).status,201);assert.equal((await request('/inquiries/custom',{...b,unit:'bad'})).status,400);assert.equal((await request('/inquiries/custom',{...b,quantity:1.5})).status,400)});
+
+test('selection listings have no fabricated prices or stocks; inquiry works but order is blocked',async t=>{const {request,store}=await setup(t,{fixtures:false});const data=(await request('/bootstrap')).body;assert.equal(data.inquiries.length,0);assert.equal(data.suppliers.length,0);for(const p of data.products){assert.equal(p.catalogOnly,true);for(const key of ['price','stock','moq','supplierId'])assert.equal(p[key],null)}const p=data.products[0];const result=await request('/inquiries/batch',{buyer:'Catalog buyer',email:'b@example.com',country:'肯尼亚',message:'Please confirm supply and quotation',items:[{productId:p.id,quantity:1}]});assert.equal(result.status,201);assert.equal((await request('/orders',{...order,productId:p.id})).status,400);assert.equal(store.get('products',p.id).stock,null);});

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
+test.beforeEach(async({page})=>{const r=await page.request.post('/api/auth/login',{data:{username:'e2e_admin',password:'E2E-local-only-Password9!'}});expect(r.status()).toBe(200)});
 const media=JSON.parse(fs.readFileSync(new URL('../src/data/catalog-media.json',import.meta.url)));
 async function search(page,q){await page.getByRole('textbox',{name:'搜索商品',exact:true}).fill(q);await page.getByRole('textbox',{name:'搜索商品',exact:true}).press('Enter');}
 test('all public and workspace pages render without browser errors',async({page})=>{
@@ -8,7 +9,7 @@ test('all public and workspace pages render without browser errors',async({page}
  expect(errors).toEqual([]);
 });
 test('category deep link, search, prices, favorites, comparison and catalog language work',async({page})=>{
- await page.goto('/?category=gongjuyugongchangyihaopin--gongju--diandonggongju#market');await expect(page.locator('.sf-product-card')).toHaveCount(12);await expect(page.locator('.sf-price-pending').first()).toContainText('询价');
+ await page.goto('/?category=gongjuyugongchangyihaopin--gongju--diandonggongju#market');await expect(page.locator('.sf-product-card')).toHaveCount(12);await expect(page.locator('.sf-price-pending').first()).toContainText('$');
  await page.getByRole('checkbox',{name:'对比'}).nth(0).check();await page.getByRole('checkbox',{name:'对比'}).nth(1).check();await page.getByRole('button',{name:'比较商品'}).click();await expect(page.getByRole('dialog').locator('thead img')).toHaveCount(2);await page.getByRole('button',{name:'关闭',exact:true}).click();
  await search(page,'20V 无刷充电式电钻');await expect(page.locator('.sf-product-card')).toHaveCount(1);await page.getByRole('button',{name:'收藏 20V 无刷充电式电钻',exact:true}).click();await page.locator('.sf-catalog-heading').getByRole('button',{name:/我的收藏/}).click();await expect(page.locator('.sf-product-card')).toHaveCount(1);
  await page.reload();await expect(page.getByRole('textbox',{name:'搜索商品',exact:true})).toHaveValue('20V 无刷充电式电钻');await page.getByRole('button',{name:'简体中文',exact:true}).click();await expect(page.locator('.sf-product-name')).toContainText('Brushless');
@@ -38,4 +39,4 @@ test('catalog photographs and attribution load without external asset requests',
  const external=[];page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:3001'))external.push(r.url())});await page.goto('/#market');await expect(page.locator('.sf-product-card').first()).toBeVisible();const srcs=new Set();for(let round=0;round<4;round++){for(const img of await page.locator('.sf-product-visual img').all()){await img.scrollIntoViewIfNeeded();await expect.poll(()=>img.evaluate(i=>i.complete&&i.naturalWidth>100)).toBe(true);srcs.add(await img.getAttribute('src'))}const next=page.getByRole('button',{name:'下一页',exact:true});if(await next.isDisabled())break;await next.click()}expect(srcs.size).toBe(16);await page.getByRole('button',{name:'照片来源与许可',exact:true}).click();await expect(page.locator('.media-credits article')).toHaveCount(Object.keys(media).length);expect(external).toEqual([]);
 });
 
-test('selection detail clearly requests confirmation and has no direct checkout',async({page})=>{await page.goto('/#market');await search(page,'20V 无刷充电式电钻');await page.locator('.sf-product-card').getByRole('button',{name:'20V 无刷充电式电钻',exact:true}).click();const d=page.getByRole('dialog');await expect(d).toContainText('询价获取报价');await expect(d.getByRole('button',{name:'创建采购订单'})).toHaveCount(0);await d.getByRole('button',{name:'提交采购询价'}).click();await expect(page.getByLabel('采购数量（件）*')).toHaveValue('1');});
+test('selection detail clearly requests confirmation and has no direct checkout',async({page})=>{await page.goto('/#market');await search(page,'20V 无刷充电式电钻');await page.locator('.sf-product-card').getByRole('button',{name:'20V 无刷充电式电钻',exact:true}).click();const d=page.getByRole('dialog');await expect(d).toContainText('$25–$80');await expect(d.getByRole('button',{name:'创建采购订单'})).toHaveCount(0);await d.getByRole('button',{name:'提交采购询价'}).click();await expect(page.getByLabel('采购数量（件）*')).toHaveValue('1');});

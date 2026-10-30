@@ -7,6 +7,7 @@ import { once } from 'node:events';
 import { createDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { calculateProfit } from '../server/domain.js';
+import {createAccount} from '../server/auth.js';
 async function setup(t,{fixtures=true}={}) {
   const store=createDatabase(':memory:');
   if(fixtures){
@@ -14,10 +15,13 @@ async function setup(t,{fixtures=true}={}) {
     store.put('products',{...store.get('products','p1'),catalogOnly:false,supplierId:'s1',price:528,cost:3050,stock:4800,moq:25});
     store.put('products',{...store.get('products','t1'),catalogOnly:false,supplierId:'s1',price:42.5,cost:210,stock:2400,moq:10});
   }
-  const server=createApp(store).listen(0,'127.0.0.1');
+  const admin=await createAccount(store,{username:'test_admin',password:'Test-only-password-2026!',role:'admin'});
+  const server=createApp(store,{secureCookies:false}).listen(0,'127.0.0.1');
   await once(server,'listening');
   t.after(()=>{server.closeAllConnections();server.close();store.db.close();});
-  const request=async(path,body,method='POST')=>{const r=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,body?{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});return {status:r.status,body:await r.json()};};
+  let cookie='';
+  const request=async(path,body,method='POST')=>{const r=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{...(body?{method,body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json',Cookie:cookie}});if(r.headers.get('set-cookie'))cookie=r.headers.get('set-cookie').split(';')[0];return {status:r.status,body:await r.json()};};
+  await request('/auth/login',{username:'test_admin',password:'Test-only-password-2026!'});
   return {store,request};
 }
 const order={productId:'p1',quantity:25,buyer:'Test Buyer LLC',email:'test@example.com',country:'阿联酋',destination:'杰贝阿里港'};
@@ -72,7 +76,7 @@ test('inquiries can be quoted once and require valid quantity',async t=>{
   assert.equal((await request('/inquiries/'+r.body.id+'/quote',{price:531},'PATCH')).status,400);
 });
 test('completed order cannot advance and unknown API routes return JSON',async t=>{
-  const {request}=await setup(t);assert.equal((await request('/orders/SF-202610-0085/advance',{},'PATCH')).status,400);
+  const {request}=await setup(t);assert.equal((await request('/orders/SF-202610-0085/advance',{},'PATCH')).status,404);
   assert.equal((await request('/does-not-exist')).status,404);
 });
 

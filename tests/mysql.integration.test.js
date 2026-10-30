@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {once} from 'node:events';
+import mysql from 'mysql2/promise';
+import os from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {createMysqlDatabase} from '../server/storage.js';
+import {createAccount} from '../server/auth.js';
+import {createApp} from '../server/app.js';
+const configFile=process.env.MYSQL_TEST_CONFIG_FILE;
+test('MySQL 5.7 integration: schema, ranges, rollback, row locks and durable account session',{skip:!configFile},async t=>{
+ const config=JSON.parse(fs.readFileSync(configFile));assert.equal(config.host,'127.0.0.1');assert.ok(config.database.endsWith('_test'),'Use an isolated local test database');
+ const probe=await mysql.createConnection(config);const [[version]]=await probe.query('SELECT VERSION() AS version');assert.match(version.version,/^5\.7\./);await probe.end();
+ let store=await createMysqlDatabase(config);const suffix=randomUUID().slice(0,8),productId='mysql-lock-'+suffix,rollbackId='rollback-'+suffix,username='mysql_'+suffix;
+ let server;let second;
+ t.after(async()=>{if(server){server.closeAllConnections();await new Promise(r=>server.close(r))}if(second)await second.close();await store.remove('products',productId);await store.remove('products',rollbackId);await store.remove('users',username);for(const s of await store.all('sessions'))if(s.userId===username)await store.remove('sessions',s.id);await store.close()});
+ const products=await store.all('products');assert.ok(products.length>=48);assert.ok(products.filter(p=>p.catalogOnly).every(p=>p.priceRange.low>0));
+ await assert.rejects(store.transaction(async tx=>{await tx.put('products',{id:rollbackId,stock:10});throw new Error('Force rollback')}));assert.equal(await store.get('products',rollbackId),null);
+ await store.put('products',{id:productId,stock:10});second=await createMysqlDatabase(config);
+ const reserve=s=>s.transaction(async tx=>{const p=await tx.get('products',productId);if(p.stock<7)return false;await tx.put('products',{...p,stock:p.stock-7});return true});
+ assert.deepEqual((await Promise.all([reserve(store),reserve(second)])).sort(),[false,true]);assert.equal((await store.get('products',productId)).stock,3);await second.close();second=null;
+ await createAccount(store,{username,password:'MySQL-test-only-password9!',role:'buyer'});server=createApp(store,{secureCookies:false}).listen(0,'127.0.0.1');await once(server,'listening');
+ const login=await fetch(`http://127.0.0.1:${server.address().port}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password:'MySQL-test-only-password9!'})});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];assert.equal((await login.json()).user.username,username);
+ server.closeAllConnections();await new Promise(r=>server.close(r));server=null;await store.close();store=await createMysqlDatabase(config);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'induport-mysql-backup-'));const backupPath=path.join(dir,'test.backup.json');const importId='import_'+suffix;
+ const source={...await store.get('users',username),id:importId,username:importId};fs.writeFileSync(backupPath,JSON.stringify({format:'induport-backup-v1',tables:{users:[source]}}),{mode:0o600});
+ const env={...process.env,DATABASE_CLIENT:'mysql',MYSQL_HOST:config.host,MYSQL_PORT:String(config.port),MYSQL_DATABASE:config.database,MYSQL_USER:config.user,MYSQL_PASSWORD:config.password,MYSQL_SSL:'false'};
+ try{for(let i=0;i<2;i++){const r=spawnSync(process.execPath,['scripts/import-backup.mjs',backupPath],{env,encoding:'utf8'});assert.equal(r.status,0,r.stderr)}assert.equal((await store.get('users',importId)).displayName,source.displayName)}finally{await store.remove('users',importId);fs.rmSync(dir,{recursive:true,force:true})}
+ server=createApp(store,{secureCookies:false}).listen(0,'127.0.0.1');await once(server,'listening');const me=await fetch(`http://127.0.0.1:${server.address().port}/api/auth/me`,{headers:{Cookie:cookie}});assert.equal((await me.json()).user.username,username);
+});

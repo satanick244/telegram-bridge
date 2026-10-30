@@ -7,3 +7,7 @@ test-results/
 *.log
 __pycache__/
 *.py[cod]
+
+.env.*
+!.env.example
+*.backup.json

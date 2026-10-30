@@ -1,3 +1,4 @@
+import { estimateRange } from '../shared/pricing.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -11,7 +12,10 @@ export function createDatabase(file = process.env.DATABASE_PATH || './data/steel
     CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS inquiries (id TEXT PRIMARY KEY, data TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS applications (id TEXT PRIMARY KEY, data TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS applications (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS ip_application_registration ON applications(json_extract(data, '$.registration'));`);
   const all = table => db.prepare(`SELECT data FROM ${table} ORDER BY rowid DESC`).all().map(row => JSON.parse(row.data));
   const get = (table, id) => { const row = db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id); return row ? JSON.parse(row.data) : null; };
   const put = (table, item) => { db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(item.id, JSON.stringify(item)); return item; };
@@ -40,5 +44,11 @@ export function createDatabase(file = process.env.DATABASE_PATH || './data/steel
   }
   seedIndustrialCatalog({db,get,put});
   seedSourcingCatalog({db,get,put,all});
-  return { db, all, get, put };
+  for(const p of all('products'))if(p.catalogOnly&&!p.priceRange)put('products',{...p,priceRange:estimateRange(p)});
+  const insert=(table,item)=>{db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?)`).run(item.id,JSON.stringify(item));return item;};
+  const remove=(table,id)=>db.prepare(`DELETE FROM ${table} WHERE id=?`).run(id);
+  let tail=Promise.resolve();
+  const store={db,all,get,put,insert,remove,engine:'sqlite',close:()=>db.close(),probe:()=>db.prepare('SELECT 1').get()};
+  store.transaction=async fn=>{const previous=tail;let release;tail=new Promise(r=>release=r);await previous;db.exec('BEGIN IMMEDIATE');try{const result=await fn(store);db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}finally{release();}};
+  return store;
 }

@@ -13,7 +13,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'node server/index.js',
-    env: { NODE_ENV: 'production', PORT: '3001', DATABASE_PATH: ':memory:' },
+    env: { NODE_ENV: 'production', PORT: '3001', DATABASE_PATH: ':memory:', COOKIE_SECURE:'false', ADMIN_USERNAME:'e2e_admin', ADMIN_PASSWORD:'E2E-local-only-Password9!' },
     url: 'http://127.0.0.1:3001/api/health',
     reuseExistingServer: false,
   },

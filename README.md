@@ -1,4 +1,4 @@
-# SteelFlow · 跨境工业品采购平台
+# 工贸港 · InduPort 跨境工业品采购平台
 
 一个可运行的全栈业务原型，面向中国制造与非洲市场的供应商、买家和平台运营人员。采购前台支持中英文，卖家工作台以中文为主。内置 6 家示例供应商、16 款钢材及工业品与 4 笔订单，按美元和商品所示单位计价。
 
@@ -79,15 +79,11 @@ npm run test:e2e
 
 ## 部署
 
-在线演示：https://steelflow-demo.onrender.com
+在线演示：https://induport-trade.onrender.com
 
 已提供 Dockerfile、Compose 数据卷配置和[部署说明](docs/DEPLOYMENT.md)。免费 Render 实例的临时数据库可能在重启或重新部署后重置。
 
-Render 一键部署入口（部署控制台入口，不是已上线的网站）：
-
-https://render.com/deploy?repo=https://github.com/satanick244/telegram-bridge
-
-登录自己的 Render 账号后查看配置并应用。服务完成部署后，Render 才会分配实际访问域名。
+新品牌部署配置为 [render-induport.yaml](render-induport.yaml)，在 Render 创建 Blueprint 时将 Blueprint Path 设为 `render-induport.yaml`。根目录 `render.yaml` 为旧服务保留，避免已连接的旧 Blueprint 自动变更。当前新站使用 Node.js 24 和免费实例，绑定仓库 main 分支。
 
 ## 工业风视觉与真实摄影
 

@@ -14,4 +14,4 @@ if (process.env.NODE_ENV === 'production') {
   app.use(vite.middlewares);
 }
 const port = Number(process.env.PORT || 3000);
-app.listen(port, '0.0.0.0', () => console.log(`SteelFlow running on port ${port} (${process.env.NODE_ENV || 'development'})`));
+app.listen(port, '0.0.0.0', () => console.log(`InduPort running on port ${port} (${process.env.NODE_ENV || 'development'})`));

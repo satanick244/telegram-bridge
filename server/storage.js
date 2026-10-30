@@ -2,7 +2,8 @@ import mysql from 'mysql2/promise';
 import {createHash} from 'node:crypto';
 import {createDatabase} from './db.js';
 import {estimateRange} from '../shared/pricing.js';
-const buckets=['products','suppliers','orders','inquiries','applications','users','sessions','meta'];
+import {riskBuckets} from './risk-schema.js';
+const buckets=['products','suppliers','orders','inquiries','applications','users','sessions','meta',...riskBuckets];
 const table=name=>{if(!buckets.includes(name))throw new Error('Invalid database table');return '`ip_'+name+'`'};
 export async function createMysqlDatabase(config){
  const pool=mysql.createPool({...config,waitForConnections:true,connectionLimit:8,charset:'utf8mb4',connectTimeout:10000});
@@ -10,15 +11,16 @@ export async function createMysqlDatabase(config){
   engine:'mysql',
   async all(bucket){const [rows]=await executor.query(`SELECT data FROM ${table(bucket)} ORDER BY id`);return rows.map(r=>typeof r.data==='string'?JSON.parse(r.data):r.data)},
   async get(bucket,id){const [rows]=await executor.execute(`SELECT data FROM ${table(bucket)} WHERE id=?${locking?' FOR UPDATE':''}`,[id]);return rows.length?(typeof rows[0].data==='string'?JSON.parse(rows[0].data):rows[0].data):null},
-  async put(bucket,item){await executor.execute(`INSERT INTO ${table(bucket)} (id,data) VALUES (?,?) ON DUPLICATE KEY UPDATE data=VALUES(data)`,[item.id,JSON.stringify(item)]);return item},
+  async put(bucket,item){if(bucket==='risk_audit')throw new Error('Audit is append only');await executor.execute(`INSERT INTO ${table(bucket)} (id,data) VALUES (?,?) ON DUPLICATE KEY UPDATE data=VALUES(data)`,[item.id,JSON.stringify(item)]);return item},
   async insert(bucket,item){await executor.execute(`INSERT INTO ${table(bucket)} (id,data) VALUES (?,?)`,[item.id,JSON.stringify(item)]);return item},
-  async remove(bucket,id){await executor.execute(`DELETE FROM ${table(bucket)} WHERE id=?`,[id])},
+  async remove(bucket,id){if(bucket==='risk_audit')throw new Error('Audit is append only');await executor.execute(`DELETE FROM ${table(bucket)} WHERE id=?`,[id])},
  });
  const store=adapter(pool);
  store.transaction=async fn=>{const c=await pool.getConnection();try{await c.beginTransaction();const result=await fn(adapter(c,true));await c.commit();return result}catch(e){await c.rollback();throw e}finally{c.release()}};
  store.close=()=>pool.end();store.probe=()=>pool.query('SELECT 1');
  try{
   for(const bucket of buckets)await pool.query(`CREATE TABLE IF NOT EXISTS ${table(bucket)} (id VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, data JSON NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await pool.execute('INSERT IGNORE INTO ip_risk_locks (id,data) VALUES (?,?)',['operations',JSON.stringify({id:'operations',headHash:null})]);
   const [columns]=await pool.query("SHOW COLUMNS FROM ip_applications LIKE 'registration'");
   if(!columns.length)try{await pool.query("ALTER TABLE ip_applications ADD COLUMN registration VARCHAR(18) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(data, '$.registration'))) STORED, ADD UNIQUE KEY ip_application_registration (registration)")}catch(e){if(e.code!=='ER_DUP_FIELDNAME')throw e}
   const c=await pool.getConnection();const lockName='induport-init-'+createHash('sha256').update(config.database).digest('hex').slice(0,32);

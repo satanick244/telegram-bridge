@@ -1,4 +1,5 @@
 import express from 'express';
+import {installRisk} from './risk.js';
 import {randomUUID} from 'node:crypto';
 import {calculateProfit,orderStatuses,validateOrder} from './domain.js';
 import {productCategories,categoryImages,units,unitOf} from '../shared/catalog.js';
@@ -12,7 +13,7 @@ const owns=(user,row)=>!!user&&(user.role==='admin'||row.ownerId===user.id);
 export function createApp(store,options={}){
  const app=express();app.set('trust proxy',1);app.disable('x-powered-by');app.use(express.json({limit:'100kb'}));
  installAuth(app,store,options);
- app.get('/api/health',async(req,res)=>{await store.probe();res.json({ok:true,mode:'sourcing',database:store.engine})});
+ app.get('/api/health',async(req,res)=>{await store.probe();res.json({ok:true,mode:'sourcing',database:store.engine,riskVersion:'steel-risk-v1'})});
  app.get('/api/bootstrap',async(req,res)=>{
   const user=req.user;const suppliers=(await store.all('suppliers')).filter(s=>!s.isSample);
   const mySuppliers=new Set(suppliers.filter(s=>owns(user,s)).map(s=>s.id));
@@ -24,7 +25,7 @@ export function createApp(store,options={}){
  });
  app.post('/api/profit',(req,res)=>{try{res.json(calculateProfit(req.body))}catch(e){throw fail(400,e.message)}});
  app.use('/api',requireUser);
- app.get('/api/admin/backup',requireAdmin,async(req,res)=>{const data=await store.transaction(async tx=>{const tables={};for(const bucket of ['products','suppliers','orders','inquiries','applications','users'])tables[bucket]=(await tx.all(bucket)).filter(x=>!x.isSample);return {format:'induport-backup-v1',createdAt:new Date().toISOString(),tables}});res.set('Content-Disposition','attachment; filename="induport.backup.json"');res.json(data)});
+ app.get('/api/admin/backup',requireAdmin,async(req,res)=>{const data=await store.transaction(async tx=>{const tables={};for(const bucket of ['products','suppliers','orders','inquiries','applications','users','risk_records','risk_audit','risk_locks'])tables[bucket]=(await tx.all(bucket)).filter(x=>!x.isSample);return {format:'induport-backup-v1',createdAt:new Date().toISOString(),tables}});res.set('Content-Disposition','attachment; filename="induport.backup.json"');res.json(data)});
  app.post('/api/products',async(req,res)=>{
   const b=req.body;const supplier=await store.get('suppliers',b.supplierId);
   if(!supplier||supplier.isSample)throw fail(400,'请选择有效供应商');
@@ -62,6 +63,7 @@ export function createApp(store,options={}){
  });
  app.post('/api/inquiries/custom',async(req,res)=>{const b=req.body,quantity=number(b.quantity,'采购量',1,1e7);if(!Number.isSafeInteger(quantity))throw fail(400,'采购量须为整数');if(!units.includes(b.unit))throw fail(400,'计量单位无效');const row={...inquiryInfo(b,req),id:id('RFQ-'),productId:null,custom:true,productName:text(b.productName,'采购商品',120),category:text(b.category,'采购品类',80),quantity,unit:b.unit};await store.insert('inquiries',row);res.status(201).json(row)});
  app.patch('/api/inquiries/:id/quote',async(req,res)=>{const row=await store.transaction(async tx=>{const item=await tx.get('inquiries',req.params.id);if(!item||item.isSample)throw fail(404,'询价单不存在');const s=item.supplierId?await tx.get('suppliers',item.supplierId):null;if(req.user.role!=='admin'&&!owns(req.user,s||{}))throw fail(403,'只能回复发给自己企业的询价');if(item.status!=='待报价')throw fail(400,'该询价已报价');return tx.put('inquiries',{...item,quotedPrice:number(req.body.price,'报价',1,1e6),status:'已报价',quotedAt:new Date().toISOString()})});res.json(row)});
+ installRisk(app,store);
  app.use('/api',(req,res)=>res.status(404).json({error:'接口不存在'}));
  app.use((err,req,res,next)=>{const status=err.status||(err.type==='entity.parse.failed'?400:500);if(status===500)console.error('API operation failed:',err.code||err.name);res.status(status).json({error:status===500?'服务器处理失败，请稍后重试':err.message})});
  return app;

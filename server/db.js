@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { seedIndustrialCatalog } from './industrial-seed.js';
 import { seedSourcingCatalog } from './sourcing-catalog.js';
+import {riskBuckets} from './risk-schema.js';
 export function createDatabase(file = process.env.DATABASE_PATH || './data/steelflow.db') {
   if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
@@ -16,9 +17,13 @@ export function createDatabase(file = process.env.DATABASE_PATH || './data/steel
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE UNIQUE INDEX IF NOT EXISTS ip_application_registration ON applications(json_extract(data, '$.registration'));`);
+  for (const table of riskBuckets) db.exec(`CREATE TABLE IF NOT EXISTS ${table} (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
+  db.exec(`INSERT OR IGNORE INTO risk_locks (id,data) VALUES ('operations','{"id":"operations","headHash":null}');
+    CREATE TRIGGER IF NOT EXISTS risk_audit_no_update BEFORE UPDATE ON risk_audit BEGIN SELECT RAISE(ABORT,'Audit is append only'); END;
+    CREATE TRIGGER IF NOT EXISTS risk_audit_no_delete BEFORE DELETE ON risk_audit BEGIN SELECT RAISE(ABORT,'Audit is append only'); END;`);
   const all = table => db.prepare(`SELECT data FROM ${table} ORDER BY rowid DESC`).all().map(row => JSON.parse(row.data));
   const get = (table, id) => { const row = db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id); return row ? JSON.parse(row.data) : null; };
-  const put = (table, item) => { db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(item.id, JSON.stringify(item)); return item; };
+  const put = (table, item) => { if(table==='risk_audit')throw new Error('Audit is append only'); db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(item.id, JSON.stringify(item)); return item; };
   if (!db.prepare('SELECT id FROM suppliers LIMIT 1').get()) {
     [
       { id: 's1', name: '华东钢铁集团', en: 'East China Steel Group', location: '中国 · 江苏', contact: '王经理', verified: true, certifications: 'ISO 9001 · CE · SGS', years: 12, score: 4.9 },
@@ -46,7 +51,7 @@ export function createDatabase(file = process.env.DATABASE_PATH || './data/steel
   seedSourcingCatalog({db,get,put,all});
   for(const p of all('products'))if(p.catalogOnly&&!p.priceRange)put('products',{...p,priceRange:estimateRange(p)});
   const insert=(table,item)=>{db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?)`).run(item.id,JSON.stringify(item));return item;};
-  const remove=(table,id)=>db.prepare(`DELETE FROM ${table} WHERE id=?`).run(id);
+  const remove=(table,id)=>{if(table==='risk_audit')throw new Error('Audit is append only');return db.prepare(`DELETE FROM ${table} WHERE id=?`).run(id)};
   let tail=Promise.resolve();
   const store={db,all,get,put,insert,remove,engine:'sqlite',close:()=>db.close(),probe:()=>db.prepare('SELECT 1').get()};
   store.transaction=async fn=>{const previous=tail;let release;tail=new Promise(r=>release=r);await previous;db.exec('BEGIN IMMEDIATE');try{const result=await fn(store);db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}finally{release();}};

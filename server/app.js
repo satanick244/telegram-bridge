@@ -14,7 +14,7 @@ const owns=(user,row)=>!!user&&(user.role==='admin'||row.ownerId===user.id);
 export function createApp(store,options={}){
  const app=express();app.set('trust proxy',1);app.disable('x-powered-by');app.use(express.json({limit:'100kb'}));
  installAuth(app,store,options);
- app.get('/api/health',async(req,res)=>{await store.probe();res.json({ok:true,mode:'sourcing',database:store.engine,riskVersion:'steel-risk-v1',demoVersion:'readonly-demo-v1'})});
+ app.get('/api/health',async(req,res)=>{await store.probe();res.json({ok:true,mode:'sourcing',database:store.engine,riskVersion:'steel-risk-v1',demoVersion:'forecast-demo-v2'})});
  app.get('/api/bootstrap',async(req,res)=>{
   const user=req.user;if(user?.isDemo){const products=(await store.all('products')).filter(p=>!p.isSample&&p.catalogOnly&&p.status==='在售').map(p=>cleanProduct(p,user));return res.json({user:publicUser(user),...await demoBootstrap(store,user,products)})}const suppliers=(await store.all('suppliers')).filter(s=>!s.isSample);
   const mySuppliers=new Set(suppliers.filter(s=>owns(user,s)).map(s=>s.id));

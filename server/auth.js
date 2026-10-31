@@ -24,6 +24,7 @@ export function installAuth(app,store,{secureCookies=process.env.NODE_ENV==='pro
    if((origin&&origin!==expected)||req.get('sec-fetch-site')==='cross-site')return res.status(403).json({error:'请求来源无效'});
   }
   const id=sessionId(req);if(id){const session=await store.get('sessions',id);if(session&&session.expiresAt>Date.now()){req.user=await store.get('users',session.userId);req.sessionId=id}else if(session)await store.remove('sessions',id)}
+  if(req.user?.isDemo&&req.user.demoSeedVersion===1&&['GET','HEAD'].includes(req.method))req.user=await getDemoAccount(store,req.user.role,hashPassword);
   if(req.user?.isDemo){
    const readable=['/health','/auth/me','/bootstrap','/risk'];
    const authActions=['/auth/logout','/auth/login','/auth/register','/auth/demo'];

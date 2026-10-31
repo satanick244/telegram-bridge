@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {fail,requireUser,requireAdmin} from './auth.js';
 import {unitOf} from '../shared/catalog.js';
 import {defaultRiskRules} from './risk-schema.js';
+import {evaluateDemoScenario} from './demo-scenarios.js';
 import {profileInput,tradeInput,profileFields,tradeFields,text,choice,number,minor,realSource,evaluate,key,digest,parseRows,currencies} from './risk-domain.js';
 const now=()=>new Date().toISOString();
 const can=(user,row)=>row&&(user.role==='admin'||row.ownerId===user.id);
@@ -17,7 +18,7 @@ async function audit(tx,user,ownerId,action,entityId,payload){
 }
 async function rules(tx){return await read(tx,'rules')||{...defaultRiskRules}}
 const accountId=(p,c)=>key('credit',p,c);
-async function evaluation(tx,trade){return evaluate(trade,await read(tx,trade.profileId),trade.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),await read(tx,accountId(trade.profileId,trade.currency)))}
+async function evaluation(tx,trade){const profile=await read(tx,trade.profileId);if(trade.isDemo&&trade.demoSetVersion===2)return evaluateDemoScenario(trade,profile);return evaluate(trade,profile,trade.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),await read(tx,accountId(trade.profileId,trade.currency)))}
 async function saveEvaluation(tx,user,trade){const result=await evaluation(tx,trade);const row={id:uuid('EVAL'),kind:'evaluation',ownerId:trade.ownerId,tradeId:trade.id,...result};await insert(tx,row);await audit(tx,user,trade.ownerId,'evaluation',row.id,row);return row}
 async function makeProfile(tx,user,b,inputMethod='manual'){const input=profileInput(b),id=key('profile',user.id,input.businessKey);const existing=await read(tx,id);if(existing){if(existing.inputHash!==digest(input))throw fail(409,'档案业务唯一键已用于不同内容');return existing}const row={...input,id,kind:'profile',inputMethod,ownerId:user.id,version:1,inputHash:digest(input),createdAt:now()};await insert(tx,row);await audit(tx,user,user.id,'profile.create',id,row);return row}
 async function makeTrade(tx,user,b,inputMethod='manual'){
@@ -89,7 +90,7 @@ async function decide(tx,user,approval,b){
 export function installRisk(app,store){
  const run=fn=>riskTransaction(store,fn);
  app.get('/api/risk',requireUser,async(req,res)=>res.json(await run(async tx=>{
-  const rows=(await tx.all('risk_records')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id:can(req.user,x)&&!x.isDemo);const trades=rows.filter(x=>x.kind==='trade');const assessments=[];for(const t of trades)assessments.push({tradeId:t.id,...await evaluation(tx,t)});
+  const rows=(await tx.all('risk_records')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id&&x.demoSetVersion===req.user.demoSeedVersion:can(req.user,x)&&!x.isDemo);const trades=rows.filter(x=>x.kind==='trade');const assessments=[];for(const t of trades)assessments.push({tradeId:t.id,...await evaluation(tx,t)});
   return {rules:req.user.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),demo:!!req.user.isDemo,records:rows,assessments,audit:(await tx.all('risk_audit')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id:(can(req.user,x)||x.ownerId==='*')&&!x.isDemo).sort((a,b)=>b.sequence-a.sequence),assignees:(await tx.all('users')).filter(u=>req.user.isDemo?u.id===req.user.id:u.id===req.user.id||u.role==='admin').map(u=>({id:u.id,displayName:u.displayName}))};
  })));
  app.post('/api/risk/profiles',requireUser,async(req,res)=>res.status(201).json(await run(tx=>makeProfile(tx,req.user,req.body))));

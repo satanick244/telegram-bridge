@@ -36,3 +36,17 @@ test('MySQL risk ledger: cross-connection locks, concurrent receipts, rollback, 
  try{for(let i=0;i<2;i++){const r=spawnSync(process.execPath,['scripts/import-backup.mjs',file],{encoding:'utf8',env});assert.equal(r.status,0,r.stderr)}}finally{fs.rmSync(file,{force:true})}
  assert.equal((await a('/audit/verify')).body.ok,true);
 });
+
+test('MySQL demo accounts: concurrent first sign-in, durable examples and real-view isolation',{skip:!configFile},async t=>{
+ const {getDemoAccount}=await import('../server/demo.js');const {hashPassword}=await import('../server/auth.js');
+ const config=JSON.parse(fs.readFileSync(configFile));assert.equal(config.host,'127.0.0.1');assert.ok(config.database.endsWith('_test'));
+ const a=await createMysqlDatabase(config),b=await createMysqlDatabase(config);const servers=[];t.after(async()=>{for(const server of servers){server.closeAllConnections();await new Promise(r=>server.close(r))}await a.close();await b.close()});
+ const [one,two]=await Promise.all([getDemoAccount(a,'buyer',hashPassword),getDemoAccount(b,'buyer',hashPassword)]);assert.equal(one.id,two.id);assert.equal(one.isDemo,true);
+ await getDemoAccount(b,'supplier',hashPassword);const audit=await a.all('risk_audit');assert.equal(audit.filter(x=>x.action==='demo.seed').length,2);const root=await a.get('risk_locks','operations');assert.equal(root.sequence,audit.length);
+ const server=createApp(a,{secureCookies:false}).listen(0,'127.0.0.1');servers.push(server);await once(server,'listening');const base='http://127.0.0.1:'+server.address().port+'/api';
+ const login=await fetch(base+'/auth/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'supplier'})});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
+ const risk=await (await fetch(base+'/risk',{headers:{Cookie:cookie}})).json();assert.equal(risk.demo,true);assert.equal(risk.records.filter(x=>x.kind==='profile').length,3);assert.ok(risk.records.every(x=>x.isDemo&&x.ownerId!==one.id));
+ const write=await fetch(base+'/risk/import',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{}'});assert.equal(write.status,403);
+ const publicData=await (await fetch(base+'/bootstrap')).json();assert.equal(publicData.products.length,48);assert.equal(publicData.suppliers.length,0);assert.equal(publicData.orders.length,0);
+ const reopened=await createMysqlDatabase(config);try{assert.equal((await reopened.get('users',one.id)).isDemo,true);assert.equal((await reopened.all('risk_records')).filter(x=>x.kind==='profile'&&x.ownerId===one.id).length,3)}finally{await reopened.close()}
+});

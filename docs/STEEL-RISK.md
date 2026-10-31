@@ -59,3 +59,7 @@ SQLite 新增 risk_records、risk_audit、risk_locks；MySQL 对应 ip_ 前缀�
 - `MYSQL_TEST_CONFIG_FILE=/private/test-config.json node --test --test-concurrency=1 tests/mysql.integration.test.js tests/risk-mysql.integration.test.js`：隔离的 localhost MySQL 5.7 测试库，库名须 `_test` 结尾。验证跨连接占额/核销、事务回滚、重开存储与完整快照幂等导入，禁止连接生产库。
 
 仅更新 Render `induport-trade`（srv-dbhv45psrm7s73e27t90），保留线上 MySQL 和管理员环境变量。使用 render-induport.yaml，不修改旧 render.yaml 或其他服务。手动部署指定提交后确认部署状态 live、提交 SHA 一致，并检查 `/api/health` 返回 database=mysql、riskVersion=steel-risk-v1。线上不自动写入测试交易或授信。
+
+## 只读案例体验
+
+登录页新增买家和供应商两个只读演示入口。演示规则、档案、合同、工单和额度算例均明确标注来源，常规真实账号的风控视图不包含这些资料。额度算例不进入真实账本，不提供演示管理员审批。详情见 [DEMO-ACCOUNTS.md](DEMO-ACCOUNTS.md)。

@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+
+test('buyer demo sign-in shows labelled cases and remains read-only across desktop and phone',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/#login');await page.getByRole('button',{name:'买家演示 · 只读',exact:true}).click();await expect(page.getByRole('heading',{name:'钢贸风控',exact:true})).toBeVisible();await expect(page.getByLabel('只读演示提示')).toContainText('虚构算例');await expect(page.getByRole('heading',{name:/客户 A · 钢材采购训练/})).toBeVisible();await expect(page.getByRole('button',{name:'保存档案',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'授信与收款',exact:true}).click();await expect(page.getByRole('heading',{name:'【演示】额度占用与部分收款算例',exact:true})).toBeVisible();await expect(page.getByText('不记入真实授信、收款或额度流水。',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'提交授信审批',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'订单与压力测算',exact:true}).click();await expect(page.getByRole('heading',{name:/DEMO-MISSING-DATA/})).toBeVisible();
+ const missing=page.locator('article').filter({has:page.getByRole('heading',{name:/DEMO-MISSING-DATA/})});await expect(missing).toContainText('资料待补齐');await expect(missing).toContainText('钢材单位成本及同单位数量');
+ const attack=await page.request.post('/api/risk/approvals/credit',{data:{amount:'10000000'}});expect(attack.status()).toBe(403);
+ await page.setViewportSize({width:390,height:844});for(const tab of ['风险档案','订单与压力测算','授信与收款','人工审批','预警工单','数据导入','试运行参数','审计记录']){await page.getByRole('navigation',{name:'风控工作台'}).getByRole('button',{name:tab,exact:true}).click();expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)}
+ await page.getByRole('button',{name:'退出演示，使用自己的账号',exact:true}).click();await expect(page.getByRole('heading',{name:'账号登录',exact:true})).toBeVisible();await expect(page.getByLabel('只读演示提示')).toHaveCount(0);expect((await page.request.get('/api/auth/me')).ok()).toBe(true);expect((await (await page.request.get('/api/auth/me')).json()).user).toBeNull();expect(errors).toEqual([]);
+});
+
+test('supplier demo has separate examples and no public or real-account statistics leak',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/#login');await page.getByRole('button',{name:'供应商演示 · 只读',exact:true}).click();await expect(page.getByRole('heading',{name:'业务总览',exact:true})).toBeVisible();
+ for(const route of ['products','orders','suppliers','inquiries','logistics','documents','market','factories','onboarding','risk']){await page.goto('/#'+route);await expect(page.locator('h1')).toBeVisible();await expect(page.getByLabel('只读演示提示')).toBeVisible();}
+ await page.goto('/#orders');const order=page.locator('tr').filter({hasText:'【演示】客户 A'});await order.getByRole('button').first().click();await expect(page.getByRole('button',{name:'更新状态：生产备货'})).toBeDisabled();await page.getByRole('button',{name:'查看贸易单证'}).click();await expect(page.getByText('演示算例 · 非真实贸易单证',{exact:true})).toBeVisible();await page.getByRole('button',{name:'关闭',exact:true}).click();
+ await page.getByRole('button',{name:'退出演示，使用自己的账号',exact:true}).click();const publicData=await (await page.request.get('/api/bootstrap')).json();expect(publicData.products).toHaveLength(48);expect(publicData.orders).toHaveLength(0);expect(publicData.suppliers).toHaveLength(0);
+ // A fresh private buyer never inherits the shared read-only examples.
+ await expect(page.getByRole('heading',{name:'账号登录',exact:true})).toBeVisible();await page.getByRole('button',{name:'注册账号',exact:true}).click();await page.getByLabel('账号',{exact:true}).fill('real_after_demo');await page.getByLabel('显示名称',{exact:true}).fill('Own buyer');await page.getByLabel('密码',{exact:true}).fill('Own-browser-test-password9!');await page.getByLabel('确认密码',{exact:true}).fill('Own-browser-test-password9!');await page.getByRole('button',{name:'注册并登录',exact:true}).click();await expect(page.locator('.sf-header-account')).toContainText('Own buyer');await page.goto('/#risk');await expect(page.getByText('尚无记录；请录入或导入真实资料。')).toBeVisible();await expect(page.getByLabel('只读演示提示')).toHaveCount(0);expect(errors).toEqual([]);
+});

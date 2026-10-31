@@ -9,7 +9,7 @@ const uuid=prefix=>prefix+'-'+randomUUID();
 const read=(tx,id)=>tx.get('risk_records',id);
 const put=(tx,row)=>tx.put('risk_records',row);
 const insert=(tx,row)=>tx.insert('risk_records',row);
-async function accessible(tx,user,id,kind){const row=await read(tx,id);if(!can(user,row)||row.kind!==kind)throw fail(404,'记录不存在或无权访问');return row}
+async function accessible(tx,user,id,kind){const row=await read(tx,id);if(!can(user,row)||row.kind!==kind||row.isDemo&&!user.isDemo)throw fail(404,'记录不存在或无权访问');return row}
 export const riskTransaction=(store,fn)=>store.transaction(async tx=>{const lock=await tx.get('risk_locks','operations');if(!lock)throw Error('Risk lock is not initialized');return fn(tx,lock)});
 async function audit(tx,user,ownerId,action,entityId,payload){
  const root=await tx.get('risk_locks','operations');const row={id:uuid('AUD'),sequence:(root.sequence||0)+1,ownerId,actorId:user.id,action,entityId,at:now(),payload,previousHash:root.headHash};row.hash=digest(row);
@@ -17,7 +17,7 @@ async function audit(tx,user,ownerId,action,entityId,payload){
 }
 async function rules(tx){return await read(tx,'rules')||{...defaultRiskRules}}
 const accountId=(p,c)=>key('credit',p,c);
-async function evaluation(tx,trade){return evaluate(trade,await read(tx,trade.profileId),await rules(tx),await read(tx,accountId(trade.profileId,trade.currency)))}
+async function evaluation(tx,trade){return evaluate(trade,await read(tx,trade.profileId),trade.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),await read(tx,accountId(trade.profileId,trade.currency)))}
 async function saveEvaluation(tx,user,trade){const result=await evaluation(tx,trade);const row={id:uuid('EVAL'),kind:'evaluation',ownerId:trade.ownerId,tradeId:trade.id,...result};await insert(tx,row);await audit(tx,user,trade.ownerId,'evaluation',row.id,row);return row}
 async function makeProfile(tx,user,b,inputMethod='manual'){const input=profileInput(b),id=key('profile',user.id,input.businessKey);const existing=await read(tx,id);if(existing){if(existing.inputHash!==digest(input))throw fail(409,'档案业务唯一键已用于不同内容');return existing}const row={...input,id,kind:'profile',inputMethod,ownerId:user.id,version:1,inputHash:digest(input),createdAt:now()};await insert(tx,row);await audit(tx,user,user.id,'profile.create',id,row);return row}
 async function makeTrade(tx,user,b,inputMethod='manual'){
@@ -89,8 +89,8 @@ async function decide(tx,user,approval,b){
 export function installRisk(app,store){
  const run=fn=>riskTransaction(store,fn);
  app.get('/api/risk',requireUser,async(req,res)=>res.json(await run(async tx=>{
-  const rows=(await tx.all('risk_records')).filter(x=>can(req.user,x));const trades=rows.filter(x=>x.kind==='trade');const assessments=[];for(const t of trades)assessments.push({tradeId:t.id,...await evaluation(tx,t)});
-  return {rules:await rules(tx),records:rows,assessments,audit:(await tx.all('risk_audit')).filter(x=>can(req.user,x)||x.ownerId==='*').sort((a,b)=>b.sequence-a.sequence),assignees:(await tx.all('users')).filter(u=>u.id===req.user.id||u.role==='admin').map(u=>({id:u.id,displayName:u.displayName}))};
+  const rows=(await tx.all('risk_records')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id:can(req.user,x)&&!x.isDemo);const trades=rows.filter(x=>x.kind==='trade');const assessments=[];for(const t of trades)assessments.push({tradeId:t.id,...await evaluation(tx,t)});
+  return {rules:req.user.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),demo:!!req.user.isDemo,records:rows,assessments,audit:(await tx.all('risk_audit')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id:(can(req.user,x)||x.ownerId==='*')&&!x.isDemo).sort((a,b)=>b.sequence-a.sequence),assignees:(await tx.all('users')).filter(u=>req.user.isDemo?u.id===req.user.id:u.id===req.user.id||u.role==='admin').map(u=>({id:u.id,displayName:u.displayName}))};
  })));
  app.post('/api/risk/profiles',requireUser,async(req,res)=>res.status(201).json(await run(tx=>makeProfile(tx,req.user,req.body))));
  app.patch('/api/risk/profiles/:id',requireUser,async(req,res)=>res.json(await run(async tx=>{
@@ -109,7 +109,7 @@ export function installRisk(app,store){
   const result={...old,...input,version:old.version+1,updatedAt:now(),updatedBy:req.user.id};await put(tx,result);await audit(tx,req.user,'*','rules.update','rules',{before:old,after:result,reason:text(b.reason,'规则调整理由',1000)});return result;
  })));
  app.post('/api/risk/alerts/scan',requireUser,async(req,res)=>res.json(await run(async tx=>{
-  const trades=(await tx.all('risk_records')).filter(x=>x.kind==='trade'&&can(req.user,x));let created=0;
+  const trades=(await tx.all('risk_records')).filter(x=>x.kind==='trade'&&!x.isDemo&&can(req.user,x));let created=0;
   for(const trade of trades){if(trade.cancelled)continue;const e=await evaluation(tx,trade);const codes=[...(e.missing.length?['资料待补齐']:[]),...e.warnings];
    for(const code of codes){const id=key('ticket',trade.ownerId,[trade.id,code]);if(await read(tx,id))continue;const ticket={id,kind:'ticket',ownerId:trade.ownerId,tradeId:trade.id,source:trade.source,title:code,severity:code==='逾期升级'?'high':'warning',status:'open',assigneeId:trade.ownerId,version:1,createdAt:now(),evaluationSnapshot:e};await insert(tx,ticket);await audit(tx,req.user,trade.ownerId,'ticket.create',id,ticket);created++;}
   }return {created};

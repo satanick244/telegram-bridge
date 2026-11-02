@@ -6,3 +6,12 @@ export const demoCopy=value=>typeof value==='string'?value
  .replace(/情景授信/g,'授信')
  .replace(/历史订单数明确为0；不能将无历史记录解释为信用良好，预测资料不能自动授信。/g,'新客暂无历史订单，需完成资信评审后申请授信。')
  .replace(/；回款仅为测算输入。/g,'。'):value;
+
+// The outcome badge covers the same warning; keep other independent risks visible.
+export function demoWarnings(evaluation){
+ const outcome=evaluation.forecast?.outcome;
+ const covered=new Set(['预估或示例：仅测算，不进入真实额度账',outcome]);
+ if(outcome==='压力后预计亏损')covered.add('压力情景下预计亏损');
+ if(['授信容量不足','新客未授信'].includes(outcome))covered.add('情景授信缺口');
+ return evaluation.warnings.filter(w=>!covered.has(w));
+}

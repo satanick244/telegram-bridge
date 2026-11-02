@@ -7,23 +7,24 @@ import {createApp} from '../server/app.js';
 import {evaluate,parseRows,minor} from '../server/risk-domain.js';
 import {defaultRiskRules} from '../server/risk-schema.js';
 const password='Risk-local-test-password9!';
+const future=days=>new Date(Date.now()+days*86400000).toISOString().slice(0,10);
 async function setup(t){
  const store=createDatabase(':memory:');for(const [username,role] of [['risk_admin','admin'],['risk_a','buyer'],['risk_b','supplier']])await createAccount(store,{username,password,role});
  const server=createApp(store,{secureCookies:false}).listen(0,'127.0.0.1');await once(server,'listening');t.after(async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await store.close()});
  const root='http://127.0.0.1:'+server.address().port+'/api';const cookies={};
  for(const name of ['risk_admin','risk_a','risk_b']){const r=await fetch(root+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name,password})});assert.equal(r.status,200);cookies[name]=(r.headers.get('set-cookie')||'').split(';')[0]}
- const req=async(path,body,user='risk_a',method=body?'POST':'GET')=>{const r=await fetch(root+'/risk'+path,{method,headers:{'Content-Type':'application/json',Cookie:cookies[user]||''},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()}};
+ const req=async(path,body,user='risk_a',method=body?'POST':'GET')=>{if(path==='/approvals/credit'&&body)body={validUntil:future(120),maxTermDays:90,conditions:'Reviewed fixture credit conditions',...body};const r=await fetch(root+'/risk'+path,{method,headers:{'Content-Type':'application/json',Cookie:cookies[user]||''},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()}};
  const ok=async(path,body,user='risk_a',method)=>{const r=await req(path,body,user,method);assert.ok(r.status>=200&&r.status<300,JSON.stringify(r));return r.body};
  return {store,req,ok};
 }
 const profile=(overrides={})=>({businessKey:'customer-1',name:'Explicit test customer',partyType:'customer',country:'中国',registration:'Test registration evidence',financialEvidence:'Test financial statement index',performanceEvidence:'Test performance index',source:'manual',sourceNote:'Test fixture, never production',...overrides});
-const trade=(profileId,overrides={})=>({profileId,businessKey:'contract-1',direction:'sale',amount:'1000.00',currency:'USD',quantity:'10',unit:'吨',term:'FOB',paymentMode:'credit',dueDate:'2020-01-01',steelUnitCost:'100',steelCurrency:'CNY',steelCostUnit:'吨',freight:'100',freightCurrency:'CNY',freightPayer:'self',freightIncluded:true,fxRate:'7',source:'manual',sourceNote:'Explicit fixture contract',...overrides});
+const trade=(profileId,overrides={})=>({profileId,businessKey:'contract-1',direction:'sale',amount:'1000.00',currency:'USD',quantity:'10',unit:'吨',term:'FOB',paymentMode:'credit',dueDate:future(30),steelUnitCost:'100',steelCurrency:'CNY',steelCostUnit:'吨',freight:'100',freightCurrency:'CNY',freightPayer:'self',freightIncluded:true,fxRate:'7',source:'manual',sourceNote:'Explicit fixture contract',...overrides});
 async function grant(ok,p,amount='1500',overrides={}){const a=await ok('/approvals/credit',{profileId:p.id,currency:'USD',amount,businessKey:'grant-'+amount,reason:'Reviewed financial test fixture',...overrides});return ok('/approvals/'+a.id+'/decide',{decision:'approved',reason:'Manual credit approval for test only'},'risk_admin')}
 async function reserve(ok,t,businessKey='reserve-1'){const a=await ok('/approvals/reserve',{tradeId:t.id,businessKey,reason:'Manual order review'});return ok('/approvals/'+a.id+'/decide',{decision:'approved',reason:'Reviewed input and policy snapshot'},'risk_admin')}
 
 test('unknown values stay null, zero is explicit, unit/FX/fee stress calculations are coherent',()=>{
  assert.equal(minor(''),null);assert.equal(minor('0'),0);assert.throws(()=>minor('-1'));assert.throws(()=>minor('1e2'));assert.throws(()=>minor('1.001'));
- const p=profile(),base={...trade('p'),amountMinor:100000,quantity:10,steelUnitCostMinor:10000,freightMinor:10000,fxRate:7,receivedMinor:0,releasedMinor:0};
+ const p=profile(),base={...trade('p'),dueDate:'2020-01-01',amountMinor:100000,quantity:10,steelUnitCostMinor:10000,freightMinor:10000,fxRate:7,receivedMinor:0,releasedMinor:0};
  const e=evaluate(base,p,defaultRiskRules,null,new Date('2020-01-08T00:00:00Z'));
  assert.equal(e.baseCostMinor,110000);assert.equal(e.baseMarginMinor,590000);assert.equal(e.stressedMarginMinor,563000);assert.equal(e.overdueDays,7);assert.ok(e.warnings.includes('逾期升级'));
  const missing=evaluate({...base,amountMinor:null,freightPayer:null,fxRate:null}, {...p,financialEvidence:null},defaultRiskRules,null);
@@ -43,16 +44,22 @@ test('credit, reservation and partial receipt are transactional, idempotent and 
  await grant(ok,p);const approval=await reserve(ok,o);assert.equal(approval.status,'approved');
  const repeated=await ok('/approvals/'+approval.id+'/decide',{decision:'approved',reason:'Reviewed input and policy snapshot'},'risk_admin');assert.equal(repeated.id,approval.id);
  let state=await ok('');assert.equal(state.records.find(x=>x.kind==='credit').occupiedMinor,100000);assert.equal(state.records.filter(x=>x.kind==='ledger').length,1);
- const receiptBody={tradeId:o.id,businessKey:'bank-ref-001',amount:'300',source:'manual',sourceNote:'Bank fixture 001',reason:'Receipt evidence available'};
- const [a,b]=await Promise.all([ok('/approvals/receipt',receiptBody),ok('/approvals/receipt',receiptBody)]);assert.equal(a.id,b.id);
- const decision={decision:'approved',reason:'Confirmed funds received'};await Promise.all([ok('/approvals/'+a.id+'/decide',decision,'risk_admin'),ok('/approvals/'+a.id+'/decide',decision,'risk_admin')]);
+ const invoice=await ok('/receivables',{tradeId:o.id,invoiceNumber:'INV-1',amount:'1000',issuedDate:future(0),dueDate:future(30),evidenceRef:'Invoice fixture'});
+ const receiptBody={profileId:p.id,bankAccountRef:'Local fixture USD',bankReference:'BANK-001',amount:'300',currency:'USD',receivedDate:future(0),payerName:p.name,evidenceRef:'Bank fixture',source:'manual'};
+ const receipt=await ok('/cash-receipts',receiptBody);await ok('/cash-receipts/'+receipt.id+'/confirm',{reason:'Confirmed funds received',evidenceRef:'Independent bank check',fundsVerified:true},'risk_admin');
+ const allocation={receiptId:receipt.id,businessKey:'alloc-001',items:[{invoiceId:invoice.id,amount:'300'}],reason:'Apply bank payment'};
+ const [a,b]=await Promise.all([ok('/flow-approvals/allocation',allocation),ok('/flow-approvals/allocation',allocation)]);assert.equal(a.id,b.id);
+ const decision={decision:'approved',reason:'Confirmed funds received'};await Promise.all([ok('/flow-approvals/'+a.id+'/decide',decision,'risk_admin'),ok('/flow-approvals/'+a.id+'/decide',decision,'risk_admin')]);
  state=await ok('');assert.equal(state.records.find(x=>x.kind==='credit').occupiedMinor,70000);assert.equal(state.records.find(x=>x.id===o.id).receivedMinor,30000);assert.equal(state.records.filter(x=>x.kind==='ledger').length,2);
- assert.equal((await req('/approvals/receipt',{...receiptBody,amount:'301'})).status,409);
- const excessive=await ok('/approvals/receipt',{...receiptBody,businessKey:'too-much',amount:'701'});assert.equal((await req('/approvals/'+excessive.id+'/decide',decision,'risk_admin')).status,409);
+ assert.equal((await req('/cash-receipts',{...receiptBody,amount:'301'})).status,409);
+ const extra=await ok('/cash-receipts',{...receiptBody,bankReference:'BANK-002',amount:'701'});await ok('/cash-receipts/'+extra.id+'/confirm',{reason:'Verify second receipt',evidenceRef:'Independent statement',fundsVerified:true},'risk_admin');
+ const excessive=await ok('/flow-approvals/allocation',{...allocation,receiptId:extra.id,businessKey:'too-much',items:[{invoiceId:invoice.id,amount:'701'}]});assert.equal((await req('/flow-approvals/'+excessive.id+'/decide',decision,'risk_admin')).status,409);
  assert.equal((await ok('')).records.find(x=>x.kind==='credit').occupiedMinor,70000);
- const release=await ok('/approvals/release',{tradeId:o.id,businessKey:'cancel-1',reason:'Contract cancelled, no receipt implied'});await ok('/approvals/'+release.id+'/decide',decision,'risk_admin');
- state=await ok('');assert.equal(state.records.find(x=>x.kind==='credit').occupiedMinor,0);assert.equal(state.records.find(x=>x.id===o.id).receivedMinor,30000);assert.equal(state.records.find(x=>x.id===o.id).releasedMinor,70000);
- assert.equal((await req('/approvals/receipt',{...receiptBody,businessKey:'after-cancel'})).status,409);
+ const release=await ok('/approvals/release',{tradeId:o.id,businessKey:'cancel-1',reason:'Cancel only after financial voids'});assert.equal((await req('/approvals/'+release.id+'/decide',decision,'risk_admin')).status,409);
+ const reverse=await ok('/flow-approvals/reversal',{allocationId:a.id,businessKey:'reverse-1',reason:'Correct misallocation'});await ok('/flow-approvals/'+reverse.id+'/decide',decision,'risk_admin');
+ const voidInvoice=await ok('/flow-approvals/invoice_void',{invoiceId:invoice.id,businessKey:'invoice-void-1',reason:'Cancelled contract invoice'});await ok('/flow-approvals/'+voidInvoice.id+'/decide',decision,'risk_admin');await ok('/approvals/'+release.id+'/decide',decision,'risk_admin');
+ state=await ok('');assert.equal(state.records.find(x=>x.kind==='credit').occupiedMinor,0);assert.equal(state.records.find(x=>x.id===o.id).receivedMinor,0);assert.equal(state.records.find(x=>x.id===o.id).releasedMinor,100000);assert.equal((await ok('/flow')).exposures.find(e=>e.tradeId===o.id).unbilledMinor,0);
+ assert.equal((await req('/approvals/receipt',{})).status,409);
  assert.equal((await ok('/audit/verify',null,'risk_admin')).ok,true);
 });
 
@@ -92,7 +99,7 @@ test('missing information requires explicit override; example data cannot change
 });
 
 test('rules and evaluations retain snapshots, alerts escalate and assignments are tenant constrained',async t=>{
- const {ok,req}=await setup(t),p=await ok('/profiles',profile()),o=await ok('/trades',trade(p.id));
+ const {ok,req}=await setup(t),p=await ok('/profiles',profile()),o=await ok('/trades',trade(p.id,{dueDate:'2020-01-01'}));
  const original=(await ok('')).records.find(x=>x.kind==='evaluation');assert.equal(original.rulesSnapshot.version,1);
  const modified=await ok('/rules',{...defaultRiskRules,steelShockPct:'8',reason:'New trial assumption'},'risk_admin','PUT');assert.equal(modified.version,2);
  assert.equal((await req('/rules',{...defaultRiskRules,reason:'Stale overwrite'},'risk_admin','PUT')).status,409);

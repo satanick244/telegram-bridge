@@ -1,6 +1,8 @@
 import express from 'express';
 import {installRisk} from './risk.js';
 import {demoBootstrap} from './demo.js';
+import {riskTransaction} from './risk-core.js';
+import {consumeShipmentApproval} from './risk-flow.js';
 import {randomUUID} from 'node:crypto';
 import {calculateProfit,orderStatuses,validateOrder} from './domain.js';
 import {productCategories,categoryImages,units,unitOf} from '../shared/catalog.js';
@@ -14,7 +16,7 @@ const owns=(user,row)=>!!user&&(user.role==='admin'||row.ownerId===user.id);
 export function createApp(store,options={}){
  const app=express();app.set('trust proxy',1);app.disable('x-powered-by');app.use(express.json({limit:'100kb'}));
  installAuth(app,store,options);
- app.get('/api/health',async(req,res)=>{await store.probe();res.json({ok:true,mode:'sourcing',database:store.engine,riskVersion:'steel-risk-v1',demoVersion:'forecast-demo-v2'})});
+ app.get('/api/health',async(req,res)=>{await store.probe();res.json({ok:true,mode:'sourcing',database:store.engine,riskVersion:'steel-risk-v2',demoVersion:'forecast-demo-v2'})});
  app.get('/api/bootstrap',async(req,res)=>{
   const user=req.user;if(user?.isDemo){const products=(await store.all('products')).filter(p=>!p.isSample&&p.catalogOnly&&p.status==='在售').map(p=>cleanProduct(p,user));return res.json({user:publicUser(user),...await demoBootstrap(store,user,products)})}const suppliers=(await store.all('suppliers')).filter(s=>!s.isSample);
   const mySuppliers=new Set(suppliers.filter(s=>owns(user,s)).map(s=>s.id));
@@ -54,7 +56,7 @@ export function createApp(store,options={}){
   });const {costCny,...safe}=item;res.status(201).json(req.user.role==='admin'?item:safe);
  });
  app.patch('/api/orders/:id/advance',async(req,res)=>{
-  const row=await store.transaction(async tx=>{const item=await tx.get('orders',req.params.id);if(!item||item.isSample)throw fail(404,'订单不存在');const supplier=await tx.get('suppliers',item.supplierId);if(req.user.role!=='admin'&&!owns(req.user,supplier||{}))throw fail(403,'订单履约状态由供应商维护');const index=orderStatuses.indexOf(item.status);if(index<0||index===orderStatuses.length-1)throw fail(400,'订单已完成');const status=orderStatuses[index+1];return tx.put('orders',{...item,status,history:[...(item.history||[]),{status,at:new Date().toISOString()}]});});res.json(row);
+  const row=await riskTransaction(store,async tx=>{const item=await tx.get('orders',req.params.id);if(!item||item.isSample)throw fail(404,'订单不存在');const supplier=await tx.get('suppliers',item.supplierId);if(req.user.role!=='admin'&&!owns(req.user,supplier||{}))throw fail(403,'订单履约状态由供应商维护');if(req.body.shipmentApprovalId&&item.shipmentApprovalId===req.body.shipmentApprovalId&&['运输中','已完成'].includes(item.status))return item;if(req.body.shipmentApprovalId&&item.status!=='待装运')throw fail(409,'发货审批仅用于待装运订单的首次发货');const index=orderStatuses.indexOf(item.status);if(index<0||index===orderStatuses.length-1)throw fail(400,'订单已完成');const status=orderStatuses[index+1];const release=status==='运输中'?await consumeShipmentApproval(tx,req.user,item,req.body.shipmentApprovalId):null;return tx.put('orders',{...item,status,...(release?{shipmentApprovalId:release.id}:{}),history:[...(item.history||[]),{status,at:new Date().toISOString(),...(release?{shipmentApprovalId:release.id}:{} )}]});});res.json(row);
  });
  const inquiryInfo=(b,req)=>({ownerId:req.user.id,buyer:text(b.buyer,'公司名称'),email:email(b.email),country:text(b.country,'目的国'),message:text(b.message,'采购要求',2000),status:'待报价',createdAt:new Date().toISOString()});
  app.post('/api/inquiries',async(req,res)=>{const b=req.body,p=await store.get('products',b.productId);if(!p||p.status!=='在售')throw fail(400,'商品不存在或已下架');const quantity=number(b.quantity,'询价数量',p.moq||1,p.catalogOnly?1e7:p.stock);if(!Number.isSafeInteger(quantity))throw fail(400,'询价数量须为整数');const row={...inquiryInfo(b,req),id:id('RFQ-'),productId:p.id,productName:p.name,quantity,unit:unitOf(p),supplierId:p.supplierId};await store.insert('inquiries',row);res.status(201).json(row)});

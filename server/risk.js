@@ -3,6 +3,9 @@ import {fail,requireUser,requireAdmin} from './auth.js';
 import {unitOf} from '../shared/catalog.js';
 import {defaultRiskRules} from './risk-schema.js';
 import {evaluateDemoScenario} from './demo-scenarios.js';
+import {riskTransaction,accessible,audit,rules,accountId,creditProblems} from './risk-core.js';
+import {installRiskFlow} from './risk-flow.js';
+export {riskTransaction} from './risk-core.js';
 import {profileInput,tradeInput,profileFields,tradeFields,text,choice,number,minor,realSource,evaluate,key,digest,parseRows,currencies} from './risk-domain.js';
 const now=()=>new Date().toISOString();
 const can=(user,row)=>row&&(user.role==='admin'||row.ownerId===user.id);
@@ -10,23 +13,16 @@ const uuid=prefix=>prefix+'-'+randomUUID();
 const read=(tx,id)=>tx.get('risk_records',id);
 const put=(tx,row)=>tx.put('risk_records',row);
 const insert=(tx,row)=>tx.insert('risk_records',row);
-async function accessible(tx,user,id,kind){const row=await read(tx,id);if(!can(user,row)||row.kind!==kind||row.isDemo&&!user.isDemo)throw fail(404,'记录不存在或无权访问');return row}
-export const riskTransaction=(store,fn)=>store.transaction(async tx=>{const lock=await tx.get('risk_locks','operations');if(!lock)throw Error('Risk lock is not initialized');return fn(tx,lock)});
-async function audit(tx,user,ownerId,action,entityId,payload){
- const root=await tx.get('risk_locks','operations');const row={id:uuid('AUD'),sequence:(root.sequence||0)+1,ownerId,actorId:user.id,action,entityId,at:now(),payload,previousHash:root.headHash};row.hash=digest(row);
- await tx.insert('risk_audit',row);await tx.put('risk_locks',{...root,sequence:row.sequence,headHash:row.hash});
-}
-async function rules(tx){return await read(tx,'rules')||{...defaultRiskRules}}
-const accountId=(p,c)=>key('credit',p,c);
 async function evaluation(tx,trade){const profile=await read(tx,trade.profileId);if(trade.isDemo&&trade.demoSetVersion===2)return evaluateDemoScenario(trade,profile);return evaluate(trade,profile,trade.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),await read(tx,accountId(trade.profileId,trade.currency)))}
 async function saveEvaluation(tx,user,trade){const result=await evaluation(tx,trade);const row={id:uuid('EVAL'),kind:'evaluation',ownerId:trade.ownerId,tradeId:trade.id,...result};await insert(tx,row);await audit(tx,user,trade.ownerId,'evaluation',row.id,row);return row}
-async function makeProfile(tx,user,b,inputMethod='manual'){const input=profileInput(b),id=key('profile',user.id,input.businessKey);const existing=await read(tx,id);if(existing){if(existing.inputHash!==digest(input))throw fail(409,'档案业务唯一键已用于不同内容');return existing}const row={...input,id,kind:'profile',inputMethod,ownerId:user.id,version:1,inputHash:digest(input),createdAt:now()};await insert(tx,row);await audit(tx,user,user.id,'profile.create',id,row);return row}
+async function makeProfile(tx,user,b,inputMethod='manual'){const input=profileInput(b),id=key('profile',user.id,input.businessKey);const existing=await read(tx,id);if(existing){const legacy={...input};delete legacy.platformAccountId;if(existing.inputHash!==digest(input)&&(input.platformAccountId||existing.inputHash!==digest(legacy)))throw fail(409,'档案业务唯一键已用于不同内容');return existing}const row={...input,id,kind:'profile',inputMethod,ownerId:user.id,version:1,inputHash:digest(input),createdAt:now()};await insert(tx,row);await audit(tx,user,user.id,'profile.create',id,row);return row}
 async function makeTrade(tx,user,b,inputMethod='manual'){
  const input=tradeInput(b),profile=await accessible(tx,user,input.profileId,'profile');
  if((input.direction==='sale'&&profile.partyType!=='customer')||(input.direction==='purchase'&&profile.partyType!=='supplier'))throw fail(400,'销售合同须关联客户，采购合同须关联供应商');
  const id=key('trade',profile.ownerId,input.businessKey),existing=await read(tx,id);
  if(existing){if(existing.inputHash!==digest(input))throw fail(409,'订单业务唯一键已用于不同内容');return existing}
- if(input.platformOrderId){const order=await tx.get('orders',input.platformOrderId);if(!order||order.isSample||order.ownerId!==profile.ownerId)throw fail(404,'仅能关联本账号的真实平台采购订单');if(input.direction!=='purchase'||input.currency!=='USD'||input.amountMinor!==Math.round(order.total*100)||input.quantity!==order.quantity||input.unit!==unitOf(order)||input.term!==order.term)throw fail(400,'关联订单的方向、币种、金额、数量、单位和条款必须与平台订单一致');const rows=await tx.all('risk_records');if(rows.some(x=>x.kind==='trade'&&x.platformOrderId===input.platformOrderId))throw fail(409,'该平台订单已有风控档案，不能重复敞口');}
+ if(input.platformOrderId){if(!realSource(input.source)||!realSource(profile.source))throw fail(400,'预估或示例合同不能绑定真实平台订单');const order=await tx.get('orders',input.platformOrderId);const supplier=order?await tx.get('suppliers',order.supplierId):null;const authorized=input.direction==='purchase'?order?.ownerId===profile.ownerId:supplier?.ownerId===profile.ownerId;if(!order||order.isSample||!authorized)throw fail(404,'只能关联本账号有权管理的真实平台订单');if(input.direction==='sale'&&profile.platformAccountId!==order.ownerId)throw fail(400,'客户档案须绑定该订单买家的平台账号');if(input.currency!=='USD'||input.amountMinor!==Math.round(order.total*100)||input.quantity!==order.quantity||input.unit!==unitOf(order)||input.term!==order.term)throw fail(400,'关联订单的币种、金额、数量、单位和条款必须一致');const rows=await tx.all('risk_records');if(rows.some(x=>x.kind==='trade'&&!x.cancelled&&x.platformOrderId===input.platformOrderId&&x.direction===input.direction))throw fail(409,'该方向的平台订单已有风控合同，不能重复敞口');}
+
  const row={...input,id,kind:'trade',inputMethod,ownerId:profile.ownerId,version:1,reserved:false,receivedMinor:0,releasedMinor:0,createdAt:now(),inputHash:digest(input)};
  await insert(tx,row);await audit(tx,user,row.ownerId,'trade.create',id,row);await saveEvaluation(tx,user,row);return row;
 }
@@ -36,41 +32,46 @@ async function createApproval(tx,user,b,type){
  const party=profile||await read(tx,trade.profileId),ownerId=party.ownerId;
  if(!realSource(party.source)||trade&&!realSource(trade.source))throw fail(400,'预估或示例不可授信、占额或收款核销');
  const input={type,profileId:party.id,tradeId:trade?.id||null,businessKey:text(b.businessKey,'操作业务唯一键',100),reason:text(b.reason,'申请理由',1000),acknowledgeMissing:b.acknowledgeMissing===true};
- if(type==='credit'){if(party.partyType!=='customer')throw fail(400,'赊销授信仅适用于客户');input.currency=choice(b.currency,currencies,'授信币种');input.amountMinor=minor(b.amount,'授信额度',false);const account=await read(tx,accountId(party.id,input.currency));input.accountVersion=account?.version||0;}
+ if(type==='credit'){if(party.partyType!=='customer')throw fail(400,'赊销授信仅适用于客户');input.currency=choice(b.currency,currencies,'授信币种');input.amountMinor=minor(b.amount,'授信额度',false);const account=await read(tx,accountId(party.id,input.currency));input.accountVersion=account?.version||0;input.validUntil=text(b.validUntil,'授信有效期',10);if(!/^\d{4}-\d{2}-\d{2}$/.test(input.validUntil)||!Number.isFinite(Date.parse(input.validUntil+'T00:00:00Z'))||new Date(input.validUntil+'T00:00:00Z').toISOString().slice(0,10)!==input.validUntil||input.validUntil<now().slice(0,10))throw fail(400,'授信有效期无效');input.maxTermDays=number(b.maxTermDays,'最长账期',1,365,false);if(!Number.isInteger(input.maxTermDays))throw fail(400,'最长账期须为整数');input.maxSingleMinor=minor(b.maxSingleAmount,'单笔上限');input.conditions=text(b.conditions,'授信条件',1000);}
  else{input.currency=trade.currency;if(type==='receipt'){input.amountMinor=minor(b.amount,'收款金额',false);if(input.amountMinor<=0)throw fail(400,'收款金额须大于零');input.source=choice(b.source,['manual','import'],'收款来源');input.sourceNote=text(b.sourceNote,'收款凭据/来源',1000);} }
  // Idempotency does not depend on the current mutable account version.
  const fingerprint={...input};delete fingerprint.accountVersion;
  const id=key(type==='receipt'?'receipt':'approval',ownerId,[type,input.businessKey]),existing=await read(tx,id);
  if(existing){if(existing.inputHash!==digest(fingerprint))throw fail(409,'操作业务唯一键已用于不同内容');return existing}
  if(trade){if(type==='reserve'&&(trade.reserved||trade.cancelled))throw fail(409,'订单已占额或已取消');if(type==='receipt'&&(!trade.reserved||trade.cancelled)||type==='release'&&trade.cancelled)throw fail(409,'须先完成订单占额审批，且订单未取消');}
- const row={...input,id,kind:'approval',ownerId,requestedBy:user.id,status:'pending',createdAt:now(),inputHash:digest(fingerprint),rulesSnapshot:await rules(tx),profileSnapshot:party,evaluationSnapshot:trade?await evaluation(tx,trade):null};
+ const row={...input,id,kind:'approval',ownerId,requestedBy:user.id,controlVersion:2,status:'pending',createdAt:now(),inputHash:digest(fingerprint),rulesSnapshot:await rules(tx),profileSnapshot:party,evaluationSnapshot:trade?await evaluation(tx,trade):null};
  await insert(tx,row);await audit(tx,user,ownerId,'approval.request',id,row);return row;
 }
 async function decide(tx,user,approval,b){
  const decision=choice(b.decision,['approved','rejected'],'审批决定'),reason=text(b.reason,'审批理由',1000);
  if(approval.status!=='pending'){if(approval.status===decision&&approval.decisionReason===reason)return approval;throw fail(409,'申请已处理，不可覆盖历史审批');}
+ if(approval.requestedBy===user.id)throw fail(403,'申请人与审批人必须分离，请由另一位管理员复核');
+ if(approval.type==='receipt')throw fail(409,'旧收款申请须改为到账登记、独立确认和分配核销流程');
  let decisionEvaluation=null;
  if(decision==='approved'){
   const party=await read(tx,approval.profileId);
   if(!realSource(party.source))throw fail(400,'预估/示例档案不可进入真实额度账');
   if(approval.type==='credit'){
+   if(!approval.validUntil||approval.validUntil<now().slice(0,10)||!approval.maxTermDays||!approval.conditions)throw fail(409,'授信有效期或条件已失效，请重新申请');
    if((!party.registration||!party.country||!party.financialEvidence||!party.performanceEvidence)&&!approval.acknowledgeMissing)throw fail(400,'资料待补齐；申请须明确确认缺失资料，并由管理员说明审批理由');
    const id=accountId(party.id,approval.currency),account=await read(tx,id);
    if((account?.version||0)!==approval.accountVersion)throw fail(409,'授信已变更，请重新提交申请');
    if(approval.amountMinor<(account?.occupiedMinor||0))throw fail(409,'授信额度不能低于当前占用');
-   await put(tx,{id,kind:'credit',profileId:party.id,ownerId:party.ownerId,currency:approval.currency,limitMinor:approval.amountMinor,occupiedMinor:account?.occupiedMinor||0,version:(account?.version||0)+1,approvalId:approval.id});
+   await put(tx,{id,kind:'credit',profileId:party.id,ownerId:party.ownerId,currency:approval.currency,limitMinor:approval.amountMinor,occupiedMinor:account?.occupiedMinor||0,version:(account?.version||0)+1,approvalId:approval.id,validUntil:approval.validUntil,maxTermDays:approval.maxTermDays,maxSingleMinor:approval.maxSingleMinor,conditions:approval.conditions,frozen:false,controlVersion:2,profileVersion:party.version});
   }else{
    const trade=await read(tx,approval.tradeId),evalResult=await evaluation(tx,trade);decisionEvaluation=evalResult;
    const id=accountId(party.id,trade.currency),account=await read(tx,id);
    if(approval.type==='reserve'){
     if(trade.reserved||trade.cancelled)throw fail(409,'订单已占额或取消');
     if(trade.direction!=='sale'||trade.paymentMode!=='credit'||!trade.dueDate||!trade.currency||!(trade.amountMinor>0))throw fail(400,'占额需要销售赊销合同、到期日及明确的正数金额和币种');
+    const occupation=trade.amountMinor-trade.receivedMinor-trade.releasedMinor;if(occupation<=0)throw fail(409,'本单已全额核销，无需新增授信占用');const issues=creditProblems(account,trade,new Date(),party);if(issues.length)throw fail(409,issues.join('；'));if(trade.dueDate<now().slice(0,10))throw fail(409,'逾期合同不能通过新订单预占授信');
     if(evalResult.missing.length&&!approval.acknowledgeMissing)throw fail(400,'资料待补齐，须明确确认缺失资料后申请人工审批');
-    if(!account||trade.amountMinor>account.limitMinor-account.occupiedMinor)throw fail(409,'未获批足够授信，不能占用额度');
-    await put(tx,{...account,occupiedMinor:account.occupiedMinor+trade.amountMinor});
+    if(!account||occupation>account.limitMinor-account.occupiedMinor)throw fail(409,'未获批足够授信，不能占用额度');
+    await put(tx,{...account,occupiedMinor:account.occupiedMinor+occupation});
     await put(tx,{...trade,reserved:true,reservedAt:now(),reserveApprovalId:approval.id});
-    await insert(tx,{id:key('ledger',trade.ownerId,approval.id),kind:'ledger',ownerId:trade.ownerId,profileId:party.id,tradeId:trade.id,currency:trade.currency,amountMinor:trade.amountMinor,action:'reserve',approvalId:approval.id,createdAt:now()});
+    await insert(tx,{id:key('ledger',trade.ownerId,approval.id),kind:'ledger',ownerId:trade.ownerId,profileId:party.id,tradeId:trade.id,currency:trade.currency,amountMinor:occupation,action:'reserve',approvalId:approval.id,createdAt:now()});
    }else{
+    const rows=await tx.all('risk_records');if(rows.some(x=>x.kind==='receivable'&&x.tradeId===trade.id&&x.status!=='voided')||rows.some(x=>x.kind==='flow_approval'&&x.type==='shipment'&&x.tradeId===trade.id&&x.consumedAt))throw fail(409,'存在应收或已发货记录，须先办理相应财务冲销，不能直接取消释放');
     if(approval.type==='release'&&!trade.reserved&&!trade.cancelled){
      await put(tx,{...trade,cancelled:true,version:trade.version+1});
     }else{
@@ -88,6 +89,7 @@ async function decide(tx,user,approval,b){
  const result={...approval,status:decision,decidedBy:user.id,decidedAt:now(),decisionReason:reason,decisionRulesSnapshot:await rules(tx),decisionEvaluation,decisionProfileSnapshot:await read(tx,approval.profileId)};await put(tx,result);await audit(tx,user,approval.ownerId,'approval.'+decision,approval.id,result);return result;
 }
 export function installRisk(app,store){
+ installRiskFlow(app,store);
  const run=fn=>riskTransaction(store,fn);
  app.get('/api/risk',requireUser,async(req,res)=>res.json(await run(async tx=>{
   const rows=(await tx.all('risk_records')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id&&x.demoSetVersion===req.user.demoSeedVersion:can(req.user,x)&&!x.isDemo);const trades=rows.filter(x=>x.kind==='trade');const assessments=[];for(const t of trades)assessments.push({tradeId:t.id,...await evaluation(tx,t)});
@@ -95,12 +97,14 @@ export function installRisk(app,store){
  })));
  app.post('/api/risk/profiles',requireUser,async(req,res)=>res.status(201).json(await run(tx=>makeProfile(tx,req.user,req.body))));
  app.patch('/api/risk/profiles/:id',requireUser,async(req,res)=>res.json(await run(async tx=>{
-  const row=await accessible(tx,req.user,req.params.id,'profile');if(req.body.version!==row.version)throw fail(409,'资料已更新，请刷新');const input=profileInput({...row,...req.body});if(input.source!==row.source||input.businessKey!==row.businessKey||input.partyType!==row.partyType)throw fail(400,'来源、业务唯一键和类型不可修改，请新建档案');
+  const row=await accessible(tx,req.user,req.params.id,'profile');if(req.body.version!==row.version)throw fail(409,'资料已更新，请刷新');const input=profileInput({...row,...req.body});if(input.source!==row.source||input.businessKey!==row.businessKey||input.partyType!==row.partyType||row.platformAccountId&&input.platformAccountId!==row.platformAccountId)throw fail(400,'来源、业务唯一键和类型不可修改，请新建档案');
   const reason=text(req.body.reason,'修改理由',1000);const result={...row,...input,version:row.version+1,updatedAt:now()};await put(tx,result);await audit(tx,req.user,row.ownerId,'profile.update',row.id,{before:row,after:result,reason});return result;
  })));
  app.post('/api/risk/trades',requireUser,async(req,res)=>res.status(201).json(await run(tx=>makeTrade(tx,req.user,req.body))));
+ app.post('/api/risk/trades/:id/archive',requireUser,async(req,res)=>res.json(await run(async tx=>{const t=await accessible(tx,req.user,req.params.id,'trade'),p=await read(tx,t.profileId);if(realSource(t.source)&&realSource(p.source)||t.reserved||t.receivedMinor||t.releasedMinor)throw fail(409,'真实财务合同须经过取消或冲销审批');const result={...t,cancelled:true,version:t.version+1};await put(tx,result);await audit(tx,req.user,t.ownerId,'trade.archive_estimate',t.id,{before:t,after:result,reason:text(req.body.reason,'归档理由',1000)});return result;})));
  app.post('/api/risk/trades/:id/evaluate',requireUser,async(req,res)=>res.status(201).json(await run(async tx=>saveEvaluation(tx,req.user,await accessible(tx,req.user,req.params.id,'trade')))));
- for(const type of ['credit','reserve','receipt','release'])app.post('/api/risk/approvals/'+type,requireUser,async(req,res)=>res.status(201).json(await run(tx=>createApproval(tx,req.user,req.body,type))));
+ app.post('/api/risk/approvals/receipt',requireUser,(req,res)=>res.status(409).json({error:'请在资金与应收中登记到账凭据，经另一位管理员确认后再分配核销'}));
+ for(const type of ['credit','reserve','release'])app.post('/api/risk/approvals/'+type,requireUser,async(req,res)=>res.status(201).json(await run(tx=>createApproval(tx,req.user,req.body,type))));
  app.post('/api/risk/approvals/:id/decide',requireUser,requireAdmin,async(req,res)=>res.json(await run(async tx=>decide(tx,req.user,await accessible(tx,req.user,req.params.id,'approval'),req.body))));
  app.put('/api/risk/rules',requireUser,requireAdmin,async(req,res)=>res.json(await run(async tx=>{
   const old=await rules(tx),b=req.body;if(b.version!==old.version)throw fail(409,'规则已更新，请刷新');

@@ -1,5 +1,6 @@
 import {fail,requireUser,requireAdmin} from './auth.js';
 import {riskTransaction,accessible,audit,rules,accountId,creditProblems,workflowPolicy} from './risk-core.js';
+import {reviewState,tradeControls,securityPosition} from './risk-monitor-domain.js';
 import {text,choice,minor,day,digest,key,realSource,evaluate} from './risk-domain.js';
 const now=()=>new Date().toISOString();
 const today=()=>now().slice(0,10);
@@ -38,9 +39,19 @@ export async function shipmentGate(tx,trade,order){
  // Unbilled legacy contracts remain visible in overdue checks without adding their principal twice.
  const overdueContracts=rows.filter(x=>x.kind==='trade'&&!x.isDemo&&x.ownerId===trade.ownerId&&x.profileId===trade.profileId&&x.currency===trade.currency&&x.paymentMode==='credit'&&!x.cancelled&&outstanding(x)>0&&x.dueDate&&x.dueDate<today());
  const overdueMaxDays=Math.max(0,...[...overdueInvoices,...overdueContracts].map(x=>Math.floor((Date.parse(today()+'T00:00:00Z')-Date.parse(x.dueDate+'T00:00:00Z'))/86400000)));if(overdueMaxDays)soft.push('该客户存在逾期余额，最长'+overdueMaxDays+'天');
- const assessment=evaluate(trade,profile,policy,account);if(assessment.missing.length)soft.push('测算输入待补齐：'+assessment.missing.join('、'));if(assessment.stressedMarginMinor!==null&&assessment.stressedMarginMinor<0)soft.push('压力测算出现亏损');
+ const control=tradeControls(rows,trade),review=reviewState(rows,profile,policy),security=securityPosition(rows,trade,control);
+ if(trade.paymentMode==='credit'&&outstanding(trade)>0)hard.push(...review.hard);
+ if(rows.some(x=>['control_change','security_change'].includes(x.kind)&&x.tradeId===trade.id&&x.status==='pending'))hard.push('实货或保障台账变更待独立复核');
+ if(control){
+  const product=order?await tx.get('products',order.productId):null;if(control.grade&&product?.grade&&control.grade.normalize('NFKC').trim().toUpperCase()!==product.grade.normalize('NFKC').trim().toUpperCase())hard.push('实货台账牌号与平台商品不一致');
+  if(control.inventoryQuantity!==null&&control.inventoryQuantity<trade.quantity)hard.push('登记库存数量不足本次整单装运');
+  if(control.minPrepaymentPct!==null&&paid<Math.ceil(trade.amountMinor*control.minPrepaymentPct/100))hard.push('实际核销回款未达到约定预付比例');
+  if(!control.titleEvidence||!control.qualityEvidence)soft.push('实货台账的货权或质检依据待补齐');
+  if(control.securityMode==='instruments'&&(security.securedMinor===null||security.securedMinor<security.exposureMinor))soft.push('保障未完整覆盖剩余敞口，需复核期限及可执行性');
+ }
+ const assessment=evaluate(trade,profile,policy,account,new Date(),control);if(assessment.missing.length)soft.push('测算输入待补齐：'+assessment.missing.join('、'));if(assessment.stressedMarginMinor!==null&&assessment.stressedMarginMinor<0)soft.push('压力测算出现亏损');
  const allocations=rows.filter(x=>x.kind==='flow_approval'&&x.type==='allocation'&&x.status==='approved'&&!x.reversedBy&&x.items.some(i=>invoices.some(v=>v.id===i.invoiceId)));
- const state={workflowPolicy,overdueMaxDays,trade:{id:trade.id,version:trade.version,reserved:trade.reserved,cancelled:!!trade.cancelled,receivedMinor:trade.receivedMinor,releasedMinor:trade.releasedMinor},profile,account:account||null,policy,invoices:invoices.map(x=>({id:x.id,amountMinor:x.amountMinor,paidMinor:x.paidMinor,version:x.version,status:x.status})).sort((a,b)=>a.id.localeCompare(b.id)),allocations:allocations.map(x=>x.id).sort(),order:order?{id:order.id,status:order.status,total:order.total,quantity:order.quantity,unit:order.unit||'吨',term:order.term}:null,uncoveredOther:uncoveredOther.map(x=>x.id).sort(),overdueInvoices:overdueInvoices.map(x=>x.id).sort(),overdueContracts:overdueContracts.map(x=>x.id).sort()};
+ const state={workflowPolicy,overdueMaxDays,control,review,security,trade:{id:trade.id,version:trade.version,reserved:trade.reserved,cancelled:!!trade.cancelled,receivedMinor:trade.receivedMinor,releasedMinor:trade.releasedMinor},profile,account:account||null,policy,invoices:invoices.map(x=>({id:x.id,amountMinor:x.amountMinor,paidMinor:x.paidMinor,version:x.version,status:x.status})).sort((a,b)=>a.id.localeCompare(b.id)),allocations:allocations.map(x=>x.id).sort(),order:order?{id:order.id,status:order.status,total:order.total,quantity:order.quantity,unit:order.unit||'吨',term:order.term}:null,uncoveredOther:uncoveredOther.map(x=>x.id).sort(),overdueInvoices:overdueInvoices.map(x=>x.id).sort(),overdueContracts:overdueContracts.map(x=>x.id).sort()};
  return {hard:[...new Set(hard)],soft:[...new Set(soft)],billedMinor:billed,paidMinor:paid,remainingMinor:outstanding(trade),currency:trade.currency,state,fingerprint:digest(state),checkedAt:now(),assessment};
 }
 export async function consumeShipmentApproval(tx,user,order,approvalId){

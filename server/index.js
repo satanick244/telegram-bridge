@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { openDatabase } from './storage.js';
 import { ensureAdmin } from './auth.js';
+import {runReviewMonitor} from './risk-monitor.js';
 import { createApp } from './app.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 if(process.argv.includes('--production'))process.env.NODE_ENV='production';
@@ -21,6 +22,9 @@ if (process.env.NODE_ENV === 'production') {
 const port = Number(process.env.PORT || 3000);
 const server=app.listen(port, '0.0.0.0', () => console.log(`InduPort running on port ${port} (${process.env.NODE_ENV || 'development'})`));
 
+const scan=()=>runReviewMonitor(store).catch(()=>console.error('Risk review scan failed; no financial action was executed.'));
+await scan();
+const reviewTimer=setInterval(scan,15*60*1000);reviewTimer.unref();
 let shuttingDown=false;
-const shutdown=()=>{if(shuttingDown)return;shuttingDown=true;server.close(async()=>{await store.close();process.exit(0)})};
+const shutdown=()=>{if(shuttingDown)return;shuttingDown=true;clearInterval(reviewTimer);server.close(async()=>{await store.close();process.exit(0)})};
 process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);

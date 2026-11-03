@@ -5,6 +5,8 @@ import {defaultRiskRules} from './risk-schema.js';
 import {evaluateDemoScenario} from './demo-scenarios.js';
 import {riskTransaction,accessible,audit,rules,accountId,creditProblems} from './risk-core.js';
 import {installRiskFlow} from './risk-flow.js';
+import {installRiskMonitor} from './risk-monitor.js';
+import {reviewState,tradeControls,riskDimensions,securityPosition} from './risk-monitor-domain.js';
 export {riskTransaction} from './risk-core.js';
 import {profileInput,tradeInput,profileFields,tradeFields,text,choice,number,minor,realSource,evaluate,key,digest,parseRows,currencies} from './risk-domain.js';
 const now=()=>new Date().toISOString();
@@ -13,9 +15,13 @@ const uuid=prefix=>prefix+'-'+randomUUID();
 const read=(tx,id)=>tx.get('risk_records',id);
 const put=(tx,row)=>tx.put('risk_records',row);
 const insert=(tx,row)=>tx.insert('risk_records',row);
-async function evaluation(tx,trade){const profile=await read(tx,trade.profileId);if(trade.isDemo&&trade.demoSetVersion===2)return evaluateDemoScenario(trade,profile);return evaluate(trade,profile,trade.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),await read(tx,accountId(trade.profileId,trade.currency)))}
+async function evaluation(tx,trade){
+ const profile=await read(tx,trade.profileId),rows=await tx.all('risk_records'),policy=trade.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),control=tradeControls(rows,trade);
+ const result=trade.isDemo&&trade.demoSetVersion===2?evaluateDemoScenario(trade,profile):evaluate(trade,profile,policy,await read(tx,accountId(trade.profileId,trade.currency)),new Date(),control);
+ return {...result,dimensions:riskDimensions(trade,profile,result,rows,policy),security:securityPosition(rows,trade,control),reviewSnapshot:trade.isDemo?null:reviewState(rows,profile,policy)};
+}
 async function saveEvaluation(tx,user,trade){const result=await evaluation(tx,trade);const row={id:uuid('EVAL'),kind:'evaluation',ownerId:trade.ownerId,tradeId:trade.id,...result};await insert(tx,row);await audit(tx,user,trade.ownerId,'evaluation',row.id,row);return row}
-async function makeProfile(tx,user,b,inputMethod='manual'){const input=profileInput(b),id=key('profile',user.id,input.businessKey);const existing=await read(tx,id);if(existing){const legacy={...input};delete legacy.platformAccountId;if(existing.inputHash!==digest(input)&&(input.platformAccountId||existing.inputHash!==digest(legacy)))throw fail(409,'档案业务唯一键已用于不同内容');return existing}const row={...input,id,kind:'profile',inputMethod,ownerId:user.id,version:1,inputHash:digest(input),createdAt:now()};await insert(tx,row);await audit(tx,user,user.id,'profile.create',id,row);return row}
+async function makeProfile(tx,user,b,inputMethod='manual'){const input=profileInput(b),id=key('profile',user.id,input.businessKey);const existing=await read(tx,id);if(existing){const legacy={...input};delete legacy.platformAccountId;if(existing.inputHash!==digest(input)&&(input.platformAccountId||existing.inputHash!==digest(legacy)))throw fail(409,'档案业务唯一键已用于不同内容');return existing}const row={...input,id,kind:'profile',inputMethod,ownerId:user.id,createdBy:user.id,version:1,inputHash:digest(input),createdAt:now()};await insert(tx,row);await audit(tx,user,user.id,'profile.create',id,row);return row}
 async function makeTrade(tx,user,b,inputMethod='manual'){
  const input=tradeInput(b),profile=await accessible(tx,user,input.profileId,'profile');
  if((input.direction==='sale'&&profile.partyType!=='customer')||(input.direction==='purchase'&&profile.partyType!=='supplier'))throw fail(400,'销售合同须关联客户，采购合同须关联供应商');
@@ -52,6 +58,7 @@ async function decide(tx,user,approval,b){
   const party=await read(tx,approval.profileId);
   if(!realSource(party.source))throw fail(400,'预估/示例档案不可进入真实额度账');
   if(approval.type==='credit'){
+   const review=reviewState(await tx.all('risk_records'),party,await rules(tx));if(review.hard.length)throw fail(409,review.hard.join('；'));
    if(!approval.validUntil||approval.validUntil<now().slice(0,10)||!approval.maxTermDays||!approval.conditions)throw fail(409,'授信有效期或条件已失效，请重新申请');
    if((!party.registration||!party.country||!party.financialEvidence||!party.performanceEvidence)&&!approval.acknowledgeMissing)throw fail(400,'资料待补齐；申请须明确确认缺失资料，并由管理员说明审批理由');
    const id=accountId(party.id,approval.currency),account=await read(tx,id);
@@ -64,7 +71,7 @@ async function decide(tx,user,approval,b){
    if(approval.type==='reserve'){
     if(trade.reserved||trade.cancelled)throw fail(409,'订单已占额或取消');
     if(trade.direction!=='sale'||trade.paymentMode!=='credit'||!trade.dueDate||!trade.currency||!(trade.amountMinor>0))throw fail(400,'占额需要销售赊销合同、到期日及明确的正数金额和币种');
-    const occupation=trade.amountMinor-trade.receivedMinor-trade.releasedMinor;if(occupation<=0)throw fail(409,'本单已全额核销，无需新增授信占用');const issues=creditProblems(account,trade,new Date(),party);if(issues.length)throw fail(409,issues.join('；'));if(trade.dueDate<now().slice(0,10))throw fail(409,'逾期合同不能通过新订单预占授信');
+    const occupation=trade.amountMinor-trade.receivedMinor-trade.releasedMinor;if(occupation<=0)throw fail(409,'本单已全额核销，无需新增授信占用');const issues=[...creditProblems(account,trade,new Date(),party),...reviewState(await tx.all('risk_records'),party,await rules(tx)).hard];if(issues.length)throw fail(409,issues.join('；'));if(trade.dueDate<now().slice(0,10))throw fail(409,'逾期合同不能通过新订单预占授信');
     if(evalResult.missing.length&&!approval.acknowledgeMissing)throw fail(400,'资料待补齐，须明确确认缺失资料后申请人工审批');
     if(!account||occupation>account.limitMinor-account.occupiedMinor)throw fail(409,'未获批足够授信，不能占用额度');
     await put(tx,{...account,occupiedMinor:account.occupiedMinor+occupation});
@@ -86,19 +93,20 @@ async function decide(tx,user,approval,b){
   }
  }
  }
- const result={...approval,status:decision,decidedBy:user.id,decidedAt:now(),decisionReason:reason,decisionRulesSnapshot:await rules(tx),decisionEvaluation,decisionProfileSnapshot:await read(tx,approval.profileId)};await put(tx,result);await audit(tx,user,approval.ownerId,'approval.'+decision,approval.id,result);return result;
+ const result={...approval,status:decision,decidedBy:user.id,decidedAt:now(),decisionReason:reason,decisionRulesSnapshot:await rules(tx),decisionEvaluation,decisionProfileSnapshot:await read(tx,approval.profileId),decisionReviewSnapshot:reviewState(await tx.all('risk_records'),await read(tx,approval.profileId),await rules(tx))};await put(tx,result);await audit(tx,user,approval.ownerId,'approval.'+decision,approval.id,result);return result;
 }
 export function installRisk(app,store){
  installRiskFlow(app,store);
+ installRiskMonitor(app,store);
  const run=fn=>riskTransaction(store,fn);
  app.get('/api/risk',requireUser,async(req,res)=>res.json(await run(async tx=>{
-  const rows=(await tx.all('risk_records')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id&&x.demoSetVersion===req.user.demoSeedVersion:can(req.user,x)&&!x.isDemo);const trades=rows.filter(x=>x.kind==='trade');const assessments=[];for(const t of trades)assessments.push({tradeId:t.id,...await evaluation(tx,t)});
-  return {rules:req.user.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),demo:!!req.user.isDemo,records:rows,assessments,audit:(await tx.all('risk_audit')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id:(can(req.user,x)||x.ownerId==='*')&&!x.isDemo).sort((a,b)=>b.sequence-a.sequence),assignees:(await tx.all('users')).filter(u=>req.user.isDemo?u.id===req.user.id:u.id===req.user.id||u.role==='admin').map(u=>({id:u.id,displayName:u.displayName}))};
+  const rows=(await tx.all('risk_records')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id&&x.demoSetVersion===req.user.demoSeedVersion:can(req.user,x)&&!x.isDemo);const trades=rows.filter(x=>x.kind==='trade');const assessments=[];const policy=await rules(tx);for(const t of trades){const e=await evaluation(tx,t);assessments.push({tradeId:t.id,...e});}
+  return {reviews:req.user.isDemo?[]:rows.filter(x=>x.kind==='profile'&&realSource(x.source)).map(p=>reviewState(rows,p,policy)),rules:req.user.isDemo?{...defaultRiskRules,demoScenario:true}:await rules(tx),demo:!!req.user.isDemo,records:rows,assessments,audit:(await tx.all('risk_audit')).filter(x=>req.user.isDemo?x.isDemo&&x.ownerId===req.user.id:(can(req.user,x)||x.ownerId==='*')&&!x.isDemo).sort((a,b)=>b.sequence-a.sequence),assignees:(await tx.all('users')).filter(u=>req.user.isDemo?u.id===req.user.id:u.id===req.user.id||u.role==='admin').map(u=>({id:u.id,displayName:u.displayName}))};
  })));
  app.post('/api/risk/profiles',requireUser,async(req,res)=>res.status(201).json(await run(tx=>makeProfile(tx,req.user,req.body))));
  app.patch('/api/risk/profiles/:id',requireUser,async(req,res)=>res.json(await run(async tx=>{
   const row=await accessible(tx,req.user,req.params.id,'profile');if(req.body.version!==row.version)throw fail(409,'资料已更新，请刷新');const input=profileInput({...row,...req.body});if(input.source!==row.source||input.businessKey!==row.businessKey||input.partyType!==row.partyType||row.platformAccountId&&input.platformAccountId!==row.platformAccountId)throw fail(400,'来源、业务唯一键和类型不可修改，请新建档案');
-  const reason=text(req.body.reason,'修改理由',1000);const result={...row,...input,version:row.version+1,updatedAt:now()};await put(tx,result);await audit(tx,req.user,row.ownerId,'profile.update',row.id,{before:row,after:result,reason});return result;
+  const reason=text(req.body.reason,'修改理由',1000);const result={...row,...input,version:row.version+1,updatedBy:req.user.id,updatedAt:now()};await put(tx,result);await audit(tx,req.user,row.ownerId,'profile.update',row.id,{before:row,after:result,reason});return result;
  })));
  app.post('/api/risk/trades',requireUser,async(req,res)=>res.status(201).json(await run(tx=>makeTrade(tx,req.user,req.body))));
  app.post('/api/risk/trades/:id/archive',requireUser,async(req,res)=>res.json(await run(async tx=>{const t=await accessible(tx,req.user,req.params.id,'trade'),p=await read(tx,t.profileId);if(realSource(t.source)&&realSource(p.source)||t.reserved||t.receivedMinor||t.releasedMinor)throw fail(409,'真实财务合同须经过取消或冲销审批');const result={...t,cancelled:true,version:t.version+1};await put(tx,result);await audit(tx,req.user,t.ownerId,'trade.archive_estimate',t.id,{before:t,after:result,reason:text(req.body.reason,'归档理由',1000)});return result;})));
@@ -108,7 +116,7 @@ export function installRisk(app,store){
  app.post('/api/risk/approvals/:id/decide',requireUser,requireAdmin,async(req,res)=>res.json(await run(async tx=>decide(tx,req.user,await accessible(tx,req.user,req.params.id,'approval'),req.body))));
  app.put('/api/risk/rules',requireUser,requireAdmin,async(req,res)=>res.json(await run(async tx=>{
   const old=await rules(tx),b=req.body;if(b.version!==old.version)throw fail(409,'规则已更新，请刷新');
-  const input={};for(const k of ['overdueWarningDays','overdueEscalationDays']){input[k]=number(b[k],k,1,365,false);if(!Number.isInteger(input[k]))throw fail(400,'预警天数须为整数')}
+  const input={marketDataMaxAgeDays:number(b.marketDataMaxAgeDays??old.marketDataMaxAgeDays??7,'行情最长有效天数',1,365,false)};if(!Number.isInteger(input.marketDataMaxAgeDays))throw fail(400,'行情有效天数须为整数');for(const k of ['overdueWarningDays','overdueEscalationDays']){input[k]=number(b[k],k,1,365,false);if(!Number.isInteger(input[k]))throw fail(400,'预警天数须为整数')}
   if(input.overdueEscalationDays<input.overdueWarningDays)throw fail(400,'升级天数不能早于预警');
   for(const k of ['steelShockPct','fxShockPct','freightShockPct'])input[k]=number(b[k],k,0,99,false);
   const result={...old,...input,version:old.version+1,updatedAt:now(),updatedBy:req.user.id};await put(tx,result);await audit(tx,req.user,'*','rules.update','rules',{before:old,after:result,reason:text(b.reason,'规则调整理由',1000)});return result;

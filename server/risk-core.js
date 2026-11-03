@@ -2,12 +2,12 @@ import {randomUUID} from 'node:crypto';
 import {fail} from './auth.js';
 import {defaultRiskRules} from './risk-schema.js';
 import {digest,key} from './risk-domain.js';
-export const workflowPolicy=Object.freeze({version:2,makerChecker:true,shipmentValidityHours:24,automaticPayment:false,automaticWarehouseRelease:false});
+export const workflowPolicy=Object.freeze({version:3,makerChecker:true,shipmentValidityHours:24,automaticPayment:false,automaticWarehouseRelease:false});
 export const accountId=(profileId,currency)=>key('credit',profileId,currency);
 export const riskTransaction=(store,fn)=>store.transaction(async tx=>{const lock=await tx.get('risk_locks','operations');if(!lock)throw Error('Risk lock is not initialized');return fn(tx,lock)});
 export async function accessible(tx,user,id,kind){const row=await tx.get('risk_records',id);if(!row||(user.role!=='admin'&&row.ownerId!==user.id)||row.kind!==kind||row.isDemo&&!user.isDemo)throw fail(404,'记录不存在或无权访问');return row}
 export async function audit(tx,user,ownerId,action,entityId,payload){const root=await tx.get('risk_locks','operations');const row={id:'AUD-'+randomUUID(),sequence:(root.sequence||0)+1,ownerId,actorId:user.id,action,entityId,at:new Date().toISOString(),payload,previousHash:root.headHash};row.hash=digest(row);await tx.insert('risk_audit',row);await tx.put('risk_locks',{...root,sequence:row.sequence,headHash:row.hash});}
-export async function rules(tx){return await tx.get('risk_records','rules')||{...defaultRiskRules}}
+export async function rules(tx){return {...defaultRiskRules,...await tx.get('risk_records','rules')}}
 export function creditProblems(account,trade,now=new Date(),profile=null){
  const issues=[];const today=now.toISOString().slice(0,10);
  if(!account)return ['未获批授信'];

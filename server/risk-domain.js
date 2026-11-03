@@ -17,7 +17,7 @@ export const profileFields=['name','partyType','registration','country','financi
 export function profileInput(b){return {platformAccountId:text(b.platformAccountId,'平台对手账号',80,true)?.normalize('NFKC').toLowerCase()||null,name:text(b.name,'企业名称',120),partyType:choice(b.partyType,['customer','supplier'],'档案类型'),registration:text(b.registration,'注册资料',120,true),country:text(b.country,'国家地区',80,true),financialEvidence:text(b.financialEvidence,'财务凭据',1000,true),performanceEvidence:text(b.performanceEvidence,'履约凭据',1000,true),notes:text(b.notes,'备注',1000,true),source:choice(b.source,sources,'数据来源'),sourceNote:text(b.sourceNote,'来源说明',1000),businessKey:text(b.businessKey,'业务唯一键',100)}}
 export const tradeFields=['profileId','platformOrderId','businessKey','direction','currency','amount','quantity','unit','term','paymentMode','dueDate','steelUnitCost','steelCurrency','steelCostUnit','freight','freightCurrency','freightPayer','freightIncluded','fxRate','source','sourceNote'];
 export function tradeInput(b){return {profileId:text(b.profileId,'档案编号',191),platformOrderId:text(b.platformOrderId,'平台订单编号',100,true),businessKey:text(b.businessKey,'业务唯一键',100),direction:choice(b.direction,['sale','purchase'],'合同方向'),currency:choice(b.currency,currencies,'合同币种',true),amountMinor:minor(b.amount),quantity:number(b.quantity,'数量',0.000001,1e9),unit:choice(b.unit,['吨','千克','件','套','米','双'],'计量单位',true),term:choice(b.term,['EXW','FOB','CFR','CIF','DAP','DDP'],'贸易条款',true),paymentMode:choice(b.paymentMode,['cash','credit'],'付款方式',true),dueDate:day(b.dueDate),steelUnitCostMinor:minor(b.steelUnitCost,'钢材单位成本'),steelCurrency:choice(b.steelCurrency,currencies,'成本币种',true),steelCostUnit:choice(b.steelCostUnit,['吨','千克','件','套','米','双'],'成本计量单位',true),freightMinor:minor(b.freight,'运费总额'),freightCurrency:choice(b.freightCurrency,currencies,'运费币种',true),freightPayer:choice(b.freightPayer,['self','counterparty'],'运费承担方',true),freightIncluded:bool(b.freightIncluded,'合同金额是否含运费'),fxRate:number(b.fxRate,'汇率 CNY/USD',0.0001,10000),source:choice(b.source,sources,'数据来源'),sourceNote:text(b.sourceNote,'来源说明',1000)}}
-export function evaluate(trade,profile,rules,credit,now=new Date()){
+export function evaluate(trade,profile,rules,credit,now=new Date(),control=null){
  const missing=[],warnings=[];
  for(const [v,label] of [[profile.registration,'企业注册资料'],[profile.country,'国家地区'],[profile.financialEvidence,'财务凭据'],[profile.performanceEvidence,'履约凭据'],[trade.amountMinor,'合同金额'],[trade.currency,'合同币种'],[trade.quantity,'数量'],[trade.unit,'计量单位'],[trade.term,'贸易条款'],[trade.paymentMode,'付款方式'],[trade.freightPayer,'运费承担方'],[trade.freightIncluded,'合同是否含运费']])if(blank(v))missing.push(label);
  if(trade.paymentMode==='credit'&&!trade.dueDate)missing.push('赊销到期日');
@@ -46,7 +46,9 @@ export function evaluate(trade,profile,rules,credit,now=new Date()){
  const toCny=x=>x.CNY+x.USD*fx;
  let baseCostMinor=null,stressedCostMinor=null,baseMarginMinor=null,stressedMarginMinor=null,stressLossMinor=null;
  if(costsKnown&&(!needsFx||trade.fxRate)){
-  const stressed={USD:steel.USD*(1+rules.steelShockPct/100)+freight.USD*(1+rules.freightShockPct/100),CNY:steel.CNY*(1+rules.steelShockPct/100)+freight.CNY*(1+rules.freightShockPct/100)};
+  const lockedRatio=control?.positionType==='unsold_inventory'?1:control?.verified&&trade.quantity>0&&control.lockedQuantity!==null?Math.min(1,control.lockedQuantity/trade.quantity):0;
+  const steelFactor=1+rules.steelShockPct/100*(1-lockedRatio);
+  const stressed={USD:steel.USD*steelFactor+freight.USD*(1+rules.freightShockPct/100),CNY:steel.CNY*steelFactor+freight.CNY*(1+rules.freightShockPct/100)};
   baseCostMinor=Math.round(toCny({USD:steel.USD+freight.USD,CNY:steel.CNY+freight.CNY}));
   const revenue={USD:0,CNY:0};
   const hasRevenue=trade.direction==='sale'&&trade.currency&&trade.amountMinor!==null&&trade.freightIncluded!==null;
@@ -59,8 +61,20 @@ export function evaluate(trade,profile,rules,credit,now=new Date()){
   if(hasRevenue){baseMarginMinor=Math.round(toCny(revenue)-baseCostMinor);stressedMarginMinor=Math.round(revenue.CNY-stressed.CNY+(revenue.USD-stressed.USD)*adverseFx);stressLossMinor=baseMarginMinor-stressedMarginMinor;if(stressedMarginMinor<0)warnings.push('压力情景下预计亏损');}
  }
  if([baseCostMinor,stressedCostMinor,baseMarginMinor,stressedMarginMinor,stressLossMinor].some(x=>x!==null&&!Number.isSafeInteger(x))){baseCostMinor=stressedCostMinor=baseMarginMinor=stressedMarginMinor=stressLossMinor=null;missing.push('测算金额超出支持精度');}
+ let inventoryBookMinor=null,inventoryMarketMinor=null,inventoryStressedMinor=null,inventoryLossMinor=null;
+ if(control?.positionType==='unsold_inventory'){
+  const marketAge=control.marketPriceAsOf?Math.floor((Date.parse(now.toISOString().slice(0,10)+'T00:00:00Z')-Date.parse(control.marketPriceAsOf+'T00:00:00Z'))/86400000):null;
+  if(control.marketUnitPriceMinor===null||marketAge===null||marketAge<0||marketAge>(rules.marketDataMaxAgeDays??7))missing.push('有效期内的库存市场价格');
+  else if(control.inventoryQuantity!==null&&multiplier!==null&&trade.steelUnitCostMinor!==null&&trade.steelCurrency&&(!needsFx||trade.fxRate)){
+   const inventoryFx=trade.steelCurrency==='USD'?fx:1,quantity=control.inventoryQuantity*multiplier;
+   inventoryBookMinor=Math.round(quantity*trade.steelUnitCostMinor*inventoryFx);inventoryMarketMinor=Math.round(quantity*control.marketUnitPriceMinor*inventoryFx);
+   inventoryStressedMinor=Math.round(inventoryMarketMinor*(1-rules.steelShockPct/100)*(trade.steelCurrency==='USD'?1-rules.fxShockPct/100:1));inventoryLossMinor=Math.max(0,inventoryBookMinor-inventoryStressedMinor);
+   if([inventoryBookMinor,inventoryMarketMinor,inventoryStressedMinor,inventoryLossMinor].some(x=>!Number.isSafeInteger(x))){inventoryBookMinor=inventoryMarketMinor=inventoryStressedMinor=inventoryLossMinor=null;missing.push('库存测算金额超出支持精度');}
+   else if(inventoryLossMinor>0)warnings.push('库存压力价值低于账面成本');
+  }
+ }
  if(trade.direction==='purchase')warnings.push('采购合同仅测算成本，不将采购金额作为销售收入');
- return {status:missing.length?'资料待补齐':'待人工审批',missing:[...new Set(missing)],warnings,outstandingMinor,overdueDays,reportingCurrency:'CNY',calculationSource:'estimate',baseCostMinor,stressedCostMinor,baseMarginMinor,stressedMarginMinor,stressLossMinor,rulesSnapshot:rules,profileSnapshot:profile,tradeSnapshot:trade,creditSnapshot:credit||null,evaluatedAt:now.toISOString(),method:'钢价成本上升、净 USD 敞口不利汇率、运费上升；运费单独收取时仅计一次等额补偿；不含未知税费、融资费及套保。局部毛利只含材料与运费，不是完整利润。试运行，非历史校准结果。',automaticRelease:false};
+ return {status:missing.length?'资料待补齐':'待人工审批',missing:[...new Set(missing)],warnings,outstandingMinor,overdueDays,reportingCurrency:'CNY',calculationSource:'estimate',controlSnapshot:control,inventoryBookMinor,inventoryMarketMinor,inventoryStressedMinor,inventoryLossMinor,baseCostMinor,stressedCostMinor,baseMarginMinor,stressedMarginMinor,stressLossMinor,rulesSnapshot:rules,profileSnapshot:profile,tradeSnapshot:trade,creditSnapshot:credit||null,evaluatedAt:now.toISOString(),method:'仅未锁价数量承受采购涨价，未售库存单列跌价损失；保障不冲减授信占用。合同预算口径未计入已锁汇效果。钢价成本上升、净 USD 敞口不利汇率、运费上升；运费单独收取时仅计一次等额补偿；不含未知税费、融资费及套保。局部毛利只含材料与运费，不是完整利润。试运行，非历史校准结果。',automaticRelease:false};
 }
 export function parseRows(format,content){
  if(typeof content!=='string'||content.length>80000)throw fail(400,'导入文件最多 80 KB');

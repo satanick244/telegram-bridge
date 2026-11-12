@@ -38,7 +38,7 @@ Redis 与 MQ 都不在资金正确性的必要路径上。财务操作提交时�
 | 9 | `integration/OutboxService.java` / `MessagingConfig.java` | DB 与 MQ 不是一个事务时怎么保证最终投递；重复消息怎么办 |
 | 10 | `integration/QuartzConfig.java` / `CatalogCache.java` | 定时任务、缓存如何帮助业务；它们失效时哪些保证仍成立 |
 
-其中原 JSON 文档表是迁移边界，动态 `Doc` 不意味着你应该在所有 Java 项目里都用 Map 代替实体。命令 DTO、Money 值对象、OutboxEntity 展示了不同职责的类型。面试时要能解释为什么保留旧存储，以及如何分阶段迁往关系表。
+其中原 JSON 文档表是迁移边界，动态 `Doc` 不意味着你应该在所有 Java 项目里都用 Map 代替实体。命令 DTO、Money 值对象、OutboxEvent 展示了不同职责的类型。面试时要能解释为什么保留旧存储，以及如何分阶段迁往关系表。
 
 ## 实验 1：把用户与数据权限讲清楚
 

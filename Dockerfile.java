@@ -3,7 +3,7 @@ FROM node:24-bookworm AS build
 WORKDIR /app
 COPY package*.json ./
 RUN --mount=type=secret,id=proxy_ca,required=false \
-    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    if [ -f /run/secrets/proxy_ca ]; then cat /run/secrets/proxy_ca >> /etc/ssl/certs/ca-certificates.crt; export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
     npm ci --no-audit --no-fund
 COPY . .
 RUN --mount=type=secret,id=proxy_ca,required=false \

@@ -2,16 +2,25 @@
 
 一个可运行的全栈业务原型，面向中国制造与非洲市场的供应商、买家和平台运营人员。采购前台支持中英文，卖家工作台以中文为主。包含 48 款采购选型条目，覆盖钢材、工具、电气能源与工业防护。展示平台估算的 USD 预算区间；库存、供应商与最终商务条款须确认，选型条目不能直接下单。旧示例供应商及交易记录已标记并从接口展示和统计中排除，不删除历史行。
 
-已实现账号密码登录、私有业务数据隔离及 MySQL 存储适配。部署与账号说明见 [ACCOUNTS-MYSQL.md](docs/ACCOUNTS-MYSQL.md)。线上是否连接 MySQL 以 `/api/health` 的 database 字段为准；未配置 MySQL 时使用 SQLite 过渡存储。仍需真实供应资料，尚未接入实际收付款或外部物流。采购目录参考区间用于预算，不代表供应商报价或实际库存。
+已实现账号密码登录、私有业务数据隔离及 MySQL 存储适配。部署与账号说明见 [ACCOUNTS-MYSQL.md](docs/ACCOUNTS-MYSQL.md)。线上是否连接 MySQL 以 `/api/health` 的 database 字段为准；Java 版本要求 MySQL；迁移前的 Node 版本保留 SQLite 作为本地对照存储。仍需真实供应资料，尚未接入实际收付款或外部物流。采购目录参考区间用于预算，不代表供应商报价或实际库存。
 
-## 本地运行
+## Java 后端与面试学习版本
+
+当前后端迁移为 **JDK 17 + Spring Boot 3 + MyBatis/MyBatis-Plus + MySQL 8**。现有 React 页面保留，开发时 Vite 与 Java 分端口，生产仍由同一个 Render 服务提供。可选 Redis、RabbitMQ、Quartz JDBC 模式在本地 Compose 中运行，线上默认不新增中间件服务。
+
+- [Java 启动、验证及数据兼容说明](docs/JAVA-START.md)
+- [代码阅读、实操实验与社招准备路线](docs/JAVA-LEARNING.md)
+
+`npm run dev` 启动 Java 后端和 Vite；`npm start` 启动已构建的 Java jar。下文 Node 运行方式作为迁移前参考，使用 `npm run dev:legacy` / `npm run start:legacy`，不要混淆两种后端。
+
+## 旧 Node 版本运行（迁移对照）
 
 需要 **Node.js 24 或更高版本**（使用内置 `node:sqlite`）。
 
 ```bash
 cd /workspace/telegram-bridge
 npm ci --cache /workspace/.npm-cache
-npm run dev
+npm run dev:legacy
 ```
 
 开发服务监听 `0.0.0.0:3000`，前端与 API 共用端口。可通过环境变量 `PORT` 更换端口。
@@ -20,7 +29,7 @@ npm run dev
 
 ```bash
 npm run build
-npm start
+npm run start:legacy
 ```
 
 SQLite 文件默认位于 `data/steelflow.db`，可通过 `DATABASE_PATH` 指定。数据库目录与生成文件已加入 `.gitignore`。示例数据仅在空数据库初始化时写入；重启服务不会清除用户录入内容。备份请在停服后复制整个 `data/` 目录。
@@ -83,7 +92,7 @@ npm run test:e2e
 
 已提供 Dockerfile、Compose 数据卷配置和[部署说明](docs/DEPLOYMENT.md)。免费 Render 实例的临时数据库可能在重启或重新部署后重置。
 
-新品牌部署配置为 [render-induport.yaml](render-induport.yaml)，在 Render 创建 Blueprint 时将 Blueprint Path 设为 `render-induport.yaml`。根目录 `render.yaml` 为旧服务保留，避免已连接的旧 Blueprint 自动变更。当前新站使用 Node.js 24 和免费实例，绑定仓库 main 分支。
+新品牌部署配置为 [render-induport.yaml](render-induport.yaml)，在 Render 创建 Blueprint 时将 Blueprint Path 设为 `render-induport.yaml`。根目录 `render.yaml` 为旧服务保留，避免已连接的旧 Blueprint 自动变更。当前新站保留原 Render 服务与 Node.js 构建入口，业务后端由 Java 17 运行，绑定 main 分支；Java 部署步骤见 JAVA-START.md。
 
 ## 工业风视觉与真实摄影
 

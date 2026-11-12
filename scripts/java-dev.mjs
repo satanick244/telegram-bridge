@@ -1,0 +1,3 @@
+import {spawn} from 'node:child_process';import path from 'node:path';
+const children=[spawn(process.execPath,['scripts/java-tools.mjs','spring-boot:run','-Dspring-boot.run.profiles='+(process.env.SPRING_PROFILES_ACTIVE||'local')],{stdio:'inherit',env:process.env}),spawn(process.execPath,['node_modules/vite/bin/vite.js'],{stdio:'inherit',env:process.env})];
+let stopping=false;function stop(){if(stopping)return;stopping=true;children.forEach(c=>c.kill('SIGTERM'));}process.on('SIGTERM',stop);process.on('SIGINT',stop);for(const child of children)child.on('exit',code=>{stop();process.exitCode=code||0});

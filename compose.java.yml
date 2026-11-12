@@ -1,0 +1,55 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set a local root password}
+      MYSQL_DATABASE: induport
+      MYSQL_USER: induport
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set a local app database password}
+    volumes:
+      - java-mysql:/var/lib/mysql
+      - ./backend/src/main/resources/db/quartz.sql:/docker-entrypoint-initdb.d/quartz.sql:ro
+    ports: ["127.0.0.1:3306:3306"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["java-redis:/data"]
+    ports: ["127.0.0.1:6379:6379"]
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: induport
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set a local broker password}
+    volumes: ["java-rabbitmq:/var/lib/rabbitmq"]
+    ports: ["127.0.0.1:5672:5672", "127.0.0.1:15672:15672"]
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.java
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_started}
+      rabbitmq: {condition: service_started}
+    environment:
+      PORT: 8080
+      INDUPORT_JDBC_URL: jdbc:mysql://mysql:3306/induport?sslMode=DISABLED&serverTimezone=UTC&characterEncoding=UTF-8
+      MYSQL_USER: induport
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_SSL: "false"
+      SPRING_PROFILES_ACTIVE: local,infra
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: induport
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    ports: ["127.0.0.1:8080:8080"]
+volumes:
+  java-mysql:
+  java-redis:
+  java-rabbitmq:

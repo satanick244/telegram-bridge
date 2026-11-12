@@ -1,0 +1,18 @@
+induport:
+  redis-enabled: true
+  mq-enabled: true
+spring:
+  rabbitmq:
+    listener:
+      simple:
+        auto-startup: true
+  quartz:
+    job-store-type: jdbc
+    jdbc:
+      initialize-schema: never
+    properties:
+      org.quartz.scheduler.instanceName: InduPortCluster
+      org.quartz.jobStore.isClustered: true
+      org.quartz.jobStore.clusterCheckinInterval: 10000
+      org.quartz.jobStore.tablePrefix: QRTZ_
+      org.quartz.jobStore.useProperties: true

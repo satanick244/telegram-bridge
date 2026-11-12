@@ -1,0 +1,73 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  tomcat:
+    threads:
+      max: 32
+      min-spare: 2
+    accept-count: 32
+    max-connections: 128
+  error:
+    include-message: never
+spring:
+  application:
+    name: induport-java
+  datasource:
+    url: ${INDUPORT_JDBC_URL:jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:induport}?sslMode=${MYSQL_SSL_MODE:VERIFY_IDENTITY}&serverTimezone=UTC&characterEncoding=UTF-8}
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+      connection-timeout: 15000
+      initialization-fail-timeout: 15000
+  jackson:
+    default-property-inclusion: always
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
+  quartz:
+    job-store-type: ${QUARTZ_STORE_TYPE:memory}
+    auto-startup: ${INDUPORT_JOBS_ENABLED:true}
+    overwrite-existing-jobs: true
+    properties:
+      org.quartz.threadPool.threadCount: 2
+      org.quartz.scheduler.instanceId: AUTO
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 500ms
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        auto-startup: ${INDUPORT_MQ_ENABLED:false}
+        acknowledge-mode: manual
+        default-requeue-rejected: false
+mybatis-plus:
+  global-config:
+    banner: false
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+springdoc:
+  api-docs:
+    enabled: ${INDUPORT_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${INDUPORT_DOCS_ENABLED:false}
+induport:
+  redis-enabled: ${INDUPORT_REDIS_ENABLED:false}
+  mq-enabled: ${INDUPORT_MQ_ENABLED:false}
+  cookie-secure: ${COOKIE_SECURE:true}
+  static-root: ${INDUPORT_STATIC_ROOT:dist}
+logging:
+  level:
+    root: WARN
+    com.induport: INFO

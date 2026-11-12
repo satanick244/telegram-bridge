@@ -9,3 +9,7 @@ playwright-report
 .env.*
 *.log
 *.zip
+
+.tools
+.runtime
+backend/target

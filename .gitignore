@@ -11,3 +11,9 @@ __pycache__/
 .env.*
 !.env.example
 *.backup.json
+
+.tools/
+backend/target/
+.runtime/
+
+!.env.java.example

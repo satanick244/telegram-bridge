@@ -11,13 +11,14 @@ import { unitOf, productCategories, categoryImages, units } from '../shared/cata
 import './theme.css';
 import Account from './account/Account.jsx';
 import RiskWorkspace from './risk/RiskWorkspace.jsx';
+const SteelWorkspace = React.lazy(() => import('./steel/SteelWorkspace.jsx'));
 import {rangeLabel} from '../shared/pricing.js';
 
 const money = (n, digits = 0) => new Intl.NumberFormat('en-US', { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(n);
 const usd = n => '$' + money(n, 2);
 const date = value => new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
 const nav = [
-  ['overview', '业务总览', LayoutDashboard], ['market', '全球采购市场', Store], ['products', '我的商品', Package], ['inquiries', '询价与报价', Mail], ['orders', '订单管理', ShoppingBag], ['profit', '利润工作台', TrendingUp], ['logistics', '物流跟踪', Truck], ['documents', '贸易单证', Files], ['suppliers', '供应商管理', Users], ['risk', '钢贸风控', ShieldCheck],
+  ['overview', '业务总览', LayoutDashboard], ['market', '全球采购市场', Store], ['products', '我的商品', Package], ['inquiries', '询价与报价', Mail], ['orders', '订单管理', ShoppingBag], ['profit', '利润工作台', TrendingUp], ['logistics', '物流跟踪', Truck], ['documents', '贸易单证', Files], ['suppliers', '供应商管理', Users], ['steel', '钢贸业务与风控', ClipboardCheck], ['risk', '风控档案与规则', ShieldCheck],
 ];
 const pageTitles = Object.fromEntries(nav.map(([key, label]) => [key, label]));
 async function api(path, options = {}) {
@@ -125,9 +126,10 @@ function App() {
         {page==='documents'&&<Documents {...ctx}/>}
         {page==='suppliers'&&<Suppliers {...ctx}/>}
         {page==='onboarding'&&<Onboarding {...ctx} onSubmit={e=>submit(e,'/applications',['capacity'],'入驻申请已提交')}/>}
+        {page==='steel'&&<React.Suspense fallback={<p>正在加载钢贸业务…</p>}><SteelWorkspace {...ctx}/></React.Suspense>}
         {page==='risk'&&<RiskWorkspace {...ctx}/>}
         {page==='settings'&&<SettingsPage setToast={setToast} data={data}/>}
-        {!['overview','market','factories','sourcing','services','products','inquiries','orders','profit','logistics','documents','suppliers','onboarding','settings','risk'].includes(page)&&<Empty title="页面不存在" action={<button className="btn primary" onClick={()=>go('overview')}>返回工作台</button>}/>}
+        {!['overview','market','factories','sourcing','services','products','inquiries','orders','profit','logistics','documents','suppliers','onboarding','settings','risk','steel'].includes(page)&&<Empty title="页面不存在" action={<button className="btn primary" onClick={()=>go('overview')}>返回工作台</button>}/>}
       </>}</PageContent>
       <footer className="main-footer"><span>© 2026 InduPort. Global supply. Connected.</span><span><button className="photo-credits-button" onClick={()=>setModal({type:'mediaCredits'})}>照片来源与许可</button><span className="footer-separator">|</span><span className="demo-dot"/> 贸易工作空间 <span className="footer-separator">|</span> USD · 按商品单位计价</span></footer>
     </div>

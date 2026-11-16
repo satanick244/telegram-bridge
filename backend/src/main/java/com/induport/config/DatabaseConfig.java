@@ -22,8 +22,17 @@ public class DatabaseConfig {
     HikariDataSource ds =
         properties.initializeDataSourceBuilder().type(HikariDataSource.class).build();
     ds.setMaximumPoolSize(8);
+    ds.setMinimumIdle(2);
+    ds.setInitializationFailTimeout(15000);
     ds.setConnectionTimeout(15000);
+    ds.setValidationTimeout(5000);
+    ds.setMaxLifetime(600000);
+    ds.setKeepaliveTime(120000);
+    ds.setIdleTimeout(120000);
     if (ds.getJdbcUrl().startsWith("jdbc:mysql:")) {
+      ds.addDataSourceProperty("connectTimeout", "10000");
+      ds.addDataSourceProperty("socketTimeout", "20000");
+      ds.addDataSourceProperty("tcpKeepAlive", "true");
       String ssl = env.getProperty("MYSQL_SSL");
       if (ssl != null && !ssl.equals("true") && !ssl.equals("false"))
         throw new IllegalStateException("Invalid MYSQL_SSL");

@@ -26,7 +26,8 @@ public class SchemaInitializer implements ApplicationRunner {
     try (var connection = jdbc.getDataSource().getConnection()) {
       h2 = connection.getMetaData().getDatabaseProductName().equals("H2");
     }
-    for (String b : DocumentMapper.Sql.BUCKETS)
+    for (String b : DocumentMapper.Sql.BUCKETS) {
+      if (b.equals("steel_records")) continue;
       jdbc.execute(
           "CREATE TABLE IF NOT EXISTS ip_"
               + b
@@ -36,6 +37,20 @@ public class SchemaInitializer implements ApplicationRunner {
               + (h2 ? "CLOB" : "JSON")
               + " NOT NULL)"
               + (h2 ? "" : " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"));
+    }
+    jdbc.execute(
+        "CREATE TABLE IF NOT EXISTS ip_steel_records (id VARCHAR(191) CHARACTER SET utf8mb4 COLLATE"
+            + " utf8mb4_bin PRIMARY KEY,data JSON NOT NULL,owner_id VARCHAR(191) CHARACTER SET"
+            + " utf8mb4 COLLATE utf8mb4_bin GENERATED ALWAYS AS"
+            + " (JSON_UNQUOTE(JSON_EXTRACT(data,'$.ownerId'))) STORED,record_kind VARCHAR(40)"
+            + " GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(data,'$.kind'))) STORED,customer_id"
+            + " VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin GENERATED ALWAYS AS"
+            + " (JSON_UNQUOTE(JSON_EXTRACT(data,'$.customerId'))) STORED,order_id VARCHAR(191)"
+            + " CHARACTER SET utf8mb4 COLLATE utf8mb4_bin GENERATED ALWAYS AS"
+            + " (JSON_UNQUOTE(JSON_EXTRACT(data,'$.orderId'))) STORED,INDEX"
+            + " ip_steel_owner_kind(owner_id,record_kind),INDEX"
+            + " ip_steel_owner_customer(owner_id,customer_id),INDEX"
+            + " ip_steel_owner_order(owner_id,order_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     jdbc.update(
         "INSERT IGNORE INTO ip_risk_locks(id,data) VALUES (?,?)",
         "operations",

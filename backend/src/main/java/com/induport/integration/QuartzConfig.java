@@ -72,18 +72,29 @@ public class QuartzConfig {
   public static class ReviewJob implements Job {
     private final Transactions tx;
     private final MonitorService monitor;
+    private final com.induport.steel.SteelService steel;
     private final com.induport.config.StartupState state;
 
     public ReviewJob(
-        Transactions tx, MonitorService monitor, com.induport.config.StartupState state) {
+        Transactions tx,
+        MonitorService monitor,
+        com.induport.steel.SteelService steel,
+        com.induport.config.StartupState state) {
       this.tx = tx;
       this.monitor = monitor;
+      this.steel = steel;
       this.state = state;
     }
 
     @Override
     public void execute(JobExecutionContext context) {
-      if (state.ready()) tx.write(() -> monitor.scan(Doc.of("id", "system:risk-monitor"), null));
+      if (state.ready())
+        tx.write(
+            () -> {
+              Doc result = monitor.scan(Doc.of("id", "system:risk-monitor"), null);
+              steel.scan();
+              return result;
+            });
     }
   }
 

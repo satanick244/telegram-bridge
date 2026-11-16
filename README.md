@@ -13,6 +13,12 @@
 
 `npm run dev` 启动 Java 后端和 Vite；`npm start` 启动已构建的 Java jar。下文 Node 运行方式作为迁移前参考，使用 `npm run dev:legacy` / `npm run start:legacy`，不要混淆两种后端。
 
+## 钢贸业务与风控工作台
+
+`/#steel` 提供企业内部人民币现货销售闭环：订单锁库存、分批提货、独立核验收款、授信与临时额度、退货待检、退款冲销、自动待办与审计。日常业务以订单为入口；原 `/#risk` 保留跨境风控档案及历史。
+
+详细规则、岗位和独立验收步骤见 [STEEL-OPERATIONS.md](docs/STEEL-OPERATIONS.md)。可使用明确隔离的测试企业体验。当前尚无真实人员与交易数据试点，不宣称已验证真实坏账改善效果。
+
 ## 旧 Node 版本运行（迁移对照）
 
 需要 **Node.js 24 或更高版本**（使用内置 `node:sqlite`）。

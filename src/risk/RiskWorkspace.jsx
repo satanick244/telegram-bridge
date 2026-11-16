@@ -23,7 +23,7 @@ export default function RiskWorkspace({user,data:platform}){
  useEffect(()=>{load()},[user.id,tab]);
  const act=async(path,body,method='POST')=>{setBusy(true);setError('');setMessage('');try{const result=await request(path,body,method);await load();setMessage('已保存，记录可在审批与审计中查看。');return result}catch(e){setError(e.message);return null}finally{setBusy(false)}};
  const submit=(path,method='POST',extra={})=>async e=>{e.preventDefault();const form=e.currentTarget;const b={...Object.fromEntries(new FormData(form)),...extra};if(await act(path,b,method)){form.reset();setEdit(null)}};
- if(!data)return <section className="risk-workspace"><h1>钢贸风控</h1>{error?<p role="alert">{error}<button onClick={load}>重新加载</button></p>:<p>正在读取风控资料…</p>}</section>;
+ if(!data)return <section className="risk-workspace"><h1>钢贸风控</h1><div className="risk-panel" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}><span>日常收款、分批提货和异常处理可进入新的订单工作台；这里保留原有档案、规则及历史记录。</span><a className="btn primary" href="#steel">进入钢贸业务与风控</a></div>{error?<p role="alert">{error}<button onClick={load}>重新加载</button></p>:<p>正在读取风控资料…</p>}</section>;
  const records=kind=>data.records.filter(x=>x.kind===kind),profiles=records('profile'),trades=records('trade'),approvals=records('approval'),credits=records('credit'),tickets=records('ticket');
  const display=value=>user.isDemo?demoCopy(value):value;
  const profileName=id=>display(profiles.find(x=>x.id===id)?.name||id);

@@ -33,6 +33,7 @@ public interface DocumentMapper {
             "sessions",
             "meta",
             "risk_records",
+            "steel_records",
             "risk_audit",
             "risk_locks");
 

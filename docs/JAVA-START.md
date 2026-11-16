@@ -103,3 +103,5 @@ JAVA_TEST_DB_CONFIG=/private/mysql-test.json JAVA_TEST_INFRA_CONFIG=/private/inf
 线上不新配 Redis/MQ 服务，默认关闭；Quartz 使用单实例内存调度、业务任务的 MySQL 锁与去重仍有效。不要把本地集群验证写成线上已部署 MQ/Redis 集群。
 
 如需回滚到迁移前的 Node 服务，可使用 Git 中的迁移前版本，或将启动命令改为 `npm run start:legacy`；不要重置数据库。Java 新审计可由原 Node 算法验证，但发货策略版本变化时仍需重新审批。
+
+新钢贸工作台的规则、企业隔离与验收见 [STEEL-OPERATIONS.md](STEEL-OPERATIONS.md)。迁移前 Node 版本不支持新工作台；回滚时要使用匹配的旧前端，并保留 MySQL 中的新账务记录。不能通过回滚代码或重置数据库来撤销已经发生的业务。

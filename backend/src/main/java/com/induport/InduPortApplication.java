@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-@MapperScan("com.induport.persistence")
+@MapperScan({"com.induport.persistence", "com.induport.steel"})
 public class InduPortApplication {
   public static void main(String[] args) {
     SpringApplication.run(InduPortApplication.class, args);

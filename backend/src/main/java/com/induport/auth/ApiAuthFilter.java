@@ -17,13 +17,20 @@ public class ApiAuthFilter extends OncePerRequestFilter {
   private final DemoService demos;
   private final Transactions tx;
   private final Environment env;
+  private final com.induport.config.StartupState state;
   private final ConcurrentHashMap<String, long[]> limits = new ConcurrentHashMap<>();
 
-  public ApiAuthFilter(DocumentStore db, DemoService demos, Transactions tx, Environment env) {
+  public ApiAuthFilter(
+      DocumentStore db,
+      DemoService demos,
+      Transactions tx,
+      Environment env,
+      com.induport.config.StartupState state) {
     this.db = db;
     this.demos = demos;
     this.tx = tx;
     this.env = env;
+    this.state = state;
   }
 
   @Override
@@ -37,6 +44,8 @@ public class ApiAuthFilter extends OncePerRequestFilter {
     }
     res.setHeader("Cache-Control", "no-store");
     try {
+      if (!path.equals("/api/health"))
+        BusinessException.require(state.ready(), 503, "服务初始化或审计校验尚未完成，请稍后重试");
       if (!List.of("GET", "HEAD", "OPTIONS").contains(req.getMethod())) {
         String
             expected =
@@ -73,7 +82,12 @@ public class ApiAuthFilter extends OncePerRequestFilter {
         boolean
             readable =
                 List.of("GET", "HEAD").contains(req.getMethod())
-                    && List.of("/api/health", "/api/auth/me", "/api/bootstrap", "/api/risk")
+                    && List.of(
+                            "/api/health",
+                            "/api/auth/me",
+                            "/api/bootstrap",
+                            "/api/risk",
+                            "/api/steel")
                         .contains(path),
             action =
                 req.getMethod().equals("POST")

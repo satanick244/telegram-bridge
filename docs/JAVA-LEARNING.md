@@ -2,6 +2,10 @@
 
 这份材料对应你提供的《Java后端学习规划.xlsx》：Java SE、MySQL/JDBC、Spring/MyBatis、Redis/RabbitMQ/Quartz、并发/JVM及部署。目标是能解释和独立重现关键流程，再将相应工作写进简历。网站有业务完整度，但演示数据不代表真实交易量或客户案例。
 
+## 钢贸业务闭环的新入口
+
+新增工作台的业务规则及岗位操作见 [STEEL-OPERATIONS.md](STEEL-OPERATIONS.md)。建议先执行其中的分批提货、收款和退货验收，再对照 `tests/java/steel-workflow.test.mjs` 阅读并发、冲销和限订单临时授信测试；不要从长 Service 第一行开始背。源码保留原审计兼容与全局数据库锁，这是需要解释的迁移选择及吞吐限制，不代表大规模金融系统架构。
+
 ## 先运行，再建立整体认识
 
 先按 [JAVA-START.md](JAVA-START.md) 跑通本地版本，使用业务账号提交、另一位管理员核验。先体验一笔授信到回款的流程，不从最长的风控 Service 第一行开始背。

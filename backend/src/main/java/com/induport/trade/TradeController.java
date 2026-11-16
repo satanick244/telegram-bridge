@@ -52,7 +52,9 @@ public class TradeController {
         "riskVersion",
         "steel-risk-v3",
         "demoVersion",
-        "forecast-demo-v2");
+        "forecast-demo-v2",
+        "steelVersion",
+        "steel-operations-v1");
   }
 
   @GetMapping("/bootstrap")
@@ -84,6 +86,7 @@ public class TradeController {
                           "applications",
                           "users",
                           "risk_records",
+                          "steel_records",
                           "risk_audit",
                           "risk_locks"))
                     tables.put(

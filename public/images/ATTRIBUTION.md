@@ -137,3 +137,7 @@
 来源：https://commons.wikimedia.org/wiki/File:Leather_work_gloves_Friday_2020-10-23_10-51-49_873.jpg
 
 许可：[CC BY 2.0](https://creativecommons.org/licenses/by/2.0)
+
+## 页面展示副本
+
+`optimized/` 中的 WebP 文件由上述原始摄影等比例缩放和转码生成，未增加或替换照片内容。各副本继续遵循对应原作品的许可；文件与原作的对应关系、尺寸和 SHA-256 见仓库 `src/data/catalog-images.json`。界面继续提供作者、作品来源及许可链接。原 JPG 保留用于核对和加载失败时的回退。

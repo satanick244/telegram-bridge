@@ -19,5 +19,23 @@ for (const type of required) {
   const isWebp = bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP';
   if ((!isJpeg && !isPng && !isWebp) || bytes.length < 10000) errors.push(`${type}: photo is not a valid downloaded bitmap`);
 }
+const responsive = JSON.parse(fs.readFileSync(new URL('../src/data/catalog-images.json', import.meta.url)));
+let derivatives=0;
+for (const type of required) {
+  const entry=responsive[type], original=media[type];
+  if(!entry||entry.original!==original.src||entry.originalSha256!==original.sha256){errors.push(`${type}: optimized source mismatch`);continue;}
+  if(!Array.isArray(entry.variants)||entry.variants.length<3){errors.push(`${type}: missing responsive widths`);continue;}
+  let last=0;
+  for(const v of entry.variants){
+    if(!v.src.startsWith('/images/optimized/')||v.src.includes('..')){errors.push(`${type}: unsafe derivative path`);continue;}
+    const file=path.resolve('public','.'+v.src);
+    if(!fs.existsSync(file)){errors.push(`${type}: missing derivative`);continue;}
+    const bytes=fs.readFileSync(file),hash=createHash('sha256').update(bytes).digest('hex');
+    if(hash!==v.sha256||!v.src.includes(hash.slice(0,12))||bytes.length!==v.bytes)errors.push(`${type}: derivative checksum or size mismatch`);
+    if(bytes.subarray(0,4).toString()!=='RIFF'||bytes.subarray(8,12).toString()!=='WEBP')errors.push(`${type}: expected WebP`);
+    if(v.width<=last||v.width>entry.width||v.width>1280||v.height<1)errors.push(`${type}: invalid responsive dimensions`);
+    last=v.width;derivatives++;
+  }
+}
 if (errors.length) { console.error('Photo readiness check failed:\n' + errors.map(x => '- ' + x).join('\n')); process.exit(1); }
-console.log('All 17 industrial-category and port photographs exist locally with source/license metadata.');
+console.log(`All 17 original photos and ${derivatives} content-addressed WebP variants are verified with source/license metadata.`);

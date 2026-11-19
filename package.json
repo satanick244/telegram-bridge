@@ -17,7 +17,8 @@
     "build:java": "node scripts/java-tools.mjs -B package",
     "test:java": "node scripts/java-tools.mjs -B test",
     "test:java:contract": "node --test tests/java/*.test.mjs",
-    "test:e2e:java": "npm run build && playwright test --config playwright.java.config.js"
+    "test:e2e:java": "npm run build && playwright test --config playwright.java.config.js",
+    "optimize:media": "python3 scripts/optimize_catalog_media.py"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",
